@@ -31,7 +31,7 @@ on:
         default: ''
 
 env:
-  REGISTRY: runpod.io
+  REGISTRY: registry.runpod.io
   # Update this list as new engines are added
   ALL_ENGINES: kokoro
 

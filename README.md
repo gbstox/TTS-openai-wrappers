@@ -115,7 +115,7 @@ Health check endpoint.
 2. **Push to main branch** — GitHub Actions automatically builds and pushes the image.
 
 3. **Create RunPod Endpoint:**
-   - Image: `runpod.io/gbstockdale/tts-kokoro:latest`
+   - Image: `registry.runpod.io/gbstockdale/tts-kokoro:latest`
    - Start Command: `python /app/deploy/runpod/handler.py`
    - GPU: Any (RTX 3090+ recommended)
 

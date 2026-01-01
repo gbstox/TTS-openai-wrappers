@@ -8,7 +8,7 @@ This directory contains the RunPod serverless handler for deploying TTS engines.
 
 The GitHub Actions workflow automatically builds and pushes images to RunPod's registry on every push to `main`.
 
-Image location: `runpod.io/gbstockdale/tts-kokoro:latest`
+Image location: `registry.runpod.io/gbstockdale/tts-kokoro:latest`
 
 ### 2. Create a Serverless Endpoint
 
