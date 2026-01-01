@@ -108,16 +108,14 @@ Health check endpoint.
 
 ### RunPod Serverless
 
-1. **Set up GitHub Secrets:**
-   - `RUNPOD_USERNAME`: Your RunPod username
-   - `RUNPOD_API_KEY`: Your RunPod API key
+1. **Push to main branch** — GitHub Actions automatically builds and pushes the image to GHCR.
 
-2. **Push to main branch** — GitHub Actions automatically builds and pushes the image.
-
-3. **Create RunPod Endpoint:**
-   - Image: `registry.runpod.io/gbstockdale/tts-kokoro:latest`
+2. **Create RunPod Endpoint:**
+   - Image: `ghcr.io/gbstox/tts-kokoro:latest`
    - Start Command: `python /app/deploy/runpod/handler.py`
    - GPU: Any (RTX 3090+ recommended)
+
+3. **Set RunPod API key** for calling the endpoint.
 
 See [deploy/runpod/README.md](deploy/runpod/README.md) for detailed instructions.
 

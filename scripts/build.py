@@ -20,8 +20,8 @@ ROOT = Path(__file__).parent.parent
 ENGINES = ["kokoro"]
 
 # Default registry settings
-DEFAULT_REGISTRY = "registry.runpod.io"
-DEFAULT_USERNAME = os.environ.get("RUNPOD_USERNAME", "gbstockdale")
+DEFAULT_REGISTRY = "ghcr.io"
+DEFAULT_USERNAME = os.environ.get("GITHUB_USERNAME", "gbstox")
 
 
 def list_engines():

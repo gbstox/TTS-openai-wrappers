@@ -6,16 +6,16 @@ This directory contains the RunPod serverless handler for deploying TTS engines.
 
 ### 1. Push the Docker Image
 
-The GitHub Actions workflow automatically builds and pushes images to RunPod's registry on every push to `main`.
+The GitHub Actions workflow automatically builds and pushes images to GitHub Container Registry (GHCR) on every push to `main`.
 
-Image location: `registry.runpod.io/gbstockdale/tts-kokoro:latest`
+Image location: `ghcr.io/gbstox/tts-kokoro:latest`
 
 ### 2. Create a Serverless Endpoint
 
 1. Go to [RunPod Serverless](https://www.runpod.io/console/serverless)
 2. Click "New Endpoint"
 3. Configure:
-   - **Container Image**: `runpod.io/gbstockdale/tts-kokoro:latest`
+   - **Container Image**: `ghcr.io/gbstox/tts-kokoro:latest`
    - **Container Start Command**: `python /app/deploy/runpod/handler.py`
    - **GPU Type**: Any (RTX 3090, A100, etc.)
    - **Max Workers**: Based on your needs
