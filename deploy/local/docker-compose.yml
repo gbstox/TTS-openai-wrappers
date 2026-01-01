@@ -1,0 +1,66 @@
+# Local development docker-compose configuration
+# 
+# Usage:
+#   docker compose -f deploy/local/docker-compose.yml up --build
+#
+# Or with GPU support:
+#   docker compose -f deploy/local/docker-compose.yml up --build kokoro-gpu
+
+services:
+  # Kokoro TTS with GPU support
+  kokoro-gpu:
+    build:
+      context: ../..
+      dockerfile: engines/kokoro/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - TTS_ENGINE=kokoro
+      - TTS_PRELOAD_VOICES=all
+      - TTS_AUTH_ENABLED=false
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - model-cache:/root/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Kokoro TTS CPU-only (slower but works without GPU)
+  kokoro-cpu:
+    build:
+      context: ../..
+      dockerfile: engines/kokoro/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - TTS_ENGINE=kokoro
+      - TTS_PRELOAD_VOICES=af_heart
+      - TTS_AUTH_ENABLED=false
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - model-cache:/root/.cache
+    restart: unless-stopped
+    profiles:
+      - cpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+volumes:
+  model-cache:
+    name: tts-model-cache
+

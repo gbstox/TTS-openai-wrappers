@@ -1,0 +1,17 @@
+# Core API dependencies
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Audio processing
+soundfile>=0.12.0
+pydub>=0.25.0
+numpy>=1.24.0
+
+# HTTP client (for health checks, etc.)
+httpx>=0.25.0
+
+# Async support
+anyio>=4.0.0
+

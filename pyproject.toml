@@ -1,0 +1,79 @@
+[project]
+name = "tts-openai-wrappers"
+version = "1.0.0"
+description = "OpenAI-compatible Text-to-Speech API wrappers for popular open-source TTS models"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "TTS OpenAI Wrappers Contributors"}
+]
+keywords = ["tts", "text-to-speech", "openai", "api", "kokoro"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "soundfile>=0.12.0",
+    "pydub>=0.25.0",
+    "numpy>=1.24.0",
+    "httpx>=0.25.0",
+    "anyio>=4.0.0",
+]
+
+[project.optional-dependencies]
+kokoro = [
+    "kokoro>=0.9.4",
+    "misaki[en,ja,zh]",
+    "torch>=2.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.25.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/gbstockdale/TTS-openai-wrappers"
+Repository = "https://github.com/gbstockdale/TTS-openai-wrappers"
+Issues = "https://github.com/gbstockdale/TTS-openai-wrappers/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["api*", "engines*", "config*", "deploy*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]  # Line too long - handled by formatter
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+

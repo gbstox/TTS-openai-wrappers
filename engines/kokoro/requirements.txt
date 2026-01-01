@@ -1,0 +1,8 @@
+# Kokoro engine dependencies
+kokoro>=0.9.4
+misaki[en,ja,zh]
+soundfile>=0.12.0
+pydub>=0.25.0
+numpy>=1.24.0
+torch>=2.0.0
+
