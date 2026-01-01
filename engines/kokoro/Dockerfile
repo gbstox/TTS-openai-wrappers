@@ -6,10 +6,11 @@ FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies including build tools for pyopenjtalk
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-venv \
+    python3.11-dev \
     python3-pip \
     espeak-ng \
     libespeak-ng1 \
@@ -17,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     git \
     curl \
+    build-essential \
+    cmake \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3.11 /usr/bin/python
