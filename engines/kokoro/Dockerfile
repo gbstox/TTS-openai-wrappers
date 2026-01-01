@@ -37,6 +37,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY engines/kokoro/requirements.txt /app/engines/kokoro/requirements.txt
 RUN pip install --no-cache-dir -r engines/kokoro/requirements.txt
 
+# Download UniDic dictionary for Japanese language support (MeCab/fugashi)
+RUN python -c "import unidic; unidic.download()" || pip install unidic-lite
+
 # Copy application code
 COPY config/ /app/config/
 COPY engines/__init__.py /app/engines/__init__.py
