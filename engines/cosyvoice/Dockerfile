@@ -1,12 +1,13 @@
 # CosyVoice TTS Engine Dockerfile
-# CUDA 12.4 base with Python 3.10 (CosyVoice requirement)
+# Multi-stage build to reduce image size
+# CUDA 12.4 runtime with Python 3.10 (CosyVoice requirement)
 
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+# Stage 1: Build and download dependencies
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
 
-# Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 \
     python3.10-venv \
@@ -16,13 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git-lfs \
     curl \
     wget \
-    ffmpeg \
-    sox \
-    libsox-dev \
-    libsndfile1 \
     build-essential \
     cmake \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
     && ln -sf /usr/bin/python3.10 /usr/bin/python
@@ -30,26 +26,48 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Initialize git-lfs
 RUN git lfs install
 
-# Set working directory
 WORKDIR /opt
 
-# Clone CosyVoice repository
-RUN git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
+# Clone CosyVoice repository (shallow clone to save space)
+RUN git clone --depth 1 --recursive https://github.com/FunAudioLLM/CosyVoice.git && \
+    cd CosyVoice && \
+    rm -rf .git third_party/*/.git
 
 WORKDIR /opt/CosyVoice
 
-# Install CosyVoice dependencies
+# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Install additional dependencies
-RUN pip install --no-cache-dir \
-    pydub>=0.25.0 \
-    runpod>=1.6.0
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0
 
 # Download CosyVoice3 model from HuggingFace
 RUN mkdir -p pretrained_models && \
     python -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/Fun-CosyVoice3-0.5B-2512', local_dir='pretrained_models/Fun-CosyVoice3-0.5B')"
+
+# Stage 2: Runtime image
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3-pip \
+    ffmpeg \
+    sox \
+    libsox-dev \
+    libsndfile1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python
+
+# Copy installed Python packages from builder
+COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+COPY --from=builder /usr/lib/python3/dist-packages /usr/lib/python3/dist-packages
+
+# Copy CosyVoice code and model
+COPY --from=builder /opt/CosyVoice /opt/CosyVoice
 
 # Set working directory for the app
 WORKDIR /app
@@ -82,6 +100,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=180s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command: run the RunPod serverless handler
-# For local API testing, override with: docker run ... python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 CMD ["python", "/app/deploy/runpod/handler.py"]
-

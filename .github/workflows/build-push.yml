@@ -68,11 +68,20 @@ jobs:
         run: |
           echo "Disk space before cleanup:"
           df -h
-          # Remove unnecessary large packages
+          # Remove unnecessary large packages (especially for CosyVoice which needs ~15GB)
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /opt/hostedtoolcache/Ruby
+          sudo rm -rf /opt/hostedtoolcache/go
+          sudo rm -rf /opt/hostedtoolcache/node
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+          sudo apt-get remove -y '^llvm-.*' '^dotnet-.*' '^aspnetcore-.*' 'php.*' azure-cli google-chrome-stable firefox powershell mono-devel libgl1-mesa-dri --autoremove -y || true
+          sudo apt-get autoremove -y || true
+          sudo apt-get clean || true
           sudo docker image prune --all --force
           echo "Disk space after cleanup:"
           df -h
