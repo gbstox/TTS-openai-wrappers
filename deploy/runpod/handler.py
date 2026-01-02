@@ -90,8 +90,8 @@ def validate_request(job_input: dict) -> tuple[bool, str | None]:
     return True, None
 
 
-async def handler_async(job: dict) -> dict:
-    """Async handler for RunPod serverless jobs.
+def handler(job: dict) -> dict:
+    """Handler for RunPod serverless jobs.
 
     Args:
         job: The RunPod job dictionary containing:
@@ -134,17 +134,23 @@ async def handler_async(job: dict) -> dict:
                 "error": f"Invalid voice '{voice}'. Available voices include: {available}..."
             }
 
-        # Synthesize audio
+        # Synthesize audio using synchronous method
         logger.info(
             f"Synthesizing: {len(text)} chars, voice={voice}, "
             f"speed={speed}, format={output_format}"
         )
 
-        audio_bytes = await engine.synthesize(
+        # Get language code for this voice
+        from engines.kokoro.voices import VOICE_TO_LANGUAGE
+        lang_code = VOICE_TO_LANGUAGE.get(voice, "a")
+
+        # Call synchronous synthesis directly
+        audio_bytes = engine._synthesize_sync(
             text=text,
             voice=voice,
             speed=speed,
             output_format=output_format,
+            lang_code=lang_code,
         )
 
         # Encode audio as base64
@@ -170,17 +176,6 @@ async def handler_async(job: dict) -> dict:
     except Exception as e:
         logger.exception("Synthesis failed")
         return {"error": str(e)}
-
-
-def handler(job: dict) -> dict:
-    """Synchronous wrapper for the async handler.
-
-    RunPod's serverless runtime expects a sync function but we use
-    async internally for better concurrency.
-    """
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(handler_async(job))
 
 
 # Entry point for RunPod serverless
