@@ -66,6 +66,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command: run the FastAPI server
-CMD ["python", "-m", "uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command: run the RunPod serverless handler
+# For local API testing, override with: docker run ... python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
+CMD ["python", "/app/deploy/runpod/handler.py"]
 
