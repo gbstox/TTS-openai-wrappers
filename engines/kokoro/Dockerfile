@@ -38,7 +38,8 @@ COPY engines/kokoro/requirements.txt /app/engines/kokoro/requirements.txt
 RUN pip install --no-cache-dir -r engines/kokoro/requirements.txt
 
 # Download UniDic dictionary for Japanese language support (MeCab/fugashi)
-RUN python -c "import unidic; unidic.download()" || pip install unidic-lite
+# This downloads the full UniDic dictionary (~500MB) required for Japanese TTS
+RUN python -m unidic download
 
 # Copy application code
 COPY config/ /app/config/
