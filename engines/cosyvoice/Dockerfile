@@ -39,12 +39,12 @@ RUN pip install --no-cache-dir torch==2.4.1 torchaudio==2.4.1 --index-url https:
 # Install CosyVoice from pip (if available) or minimal clone
 WORKDIR /opt
 
-# Clone only the necessary CosyVoice code (minimal, no examples/docs)
+# Clone CosyVoice with sparse checkout (only needed directories)
 RUN git clone --depth 1 --filter=blob:none --sparse https://github.com/FunAudioLLM/CosyVoice.git && \
     cd CosyVoice && \
-    git sparse-checkout set cosyvoice third_party && \
+    git sparse-checkout set cosyvoice third_party requirements.txt && \
     git submodule update --init --depth 1 third_party/Matcha-TTS && \
-    rm -rf .git examples asset docker runtime tools && \
+    rm -rf .git && \
     pip install --no-cache-dir -r requirements.txt
 
 WORKDIR /opt/CosyVoice
