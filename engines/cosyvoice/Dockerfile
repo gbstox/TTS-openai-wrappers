@@ -33,7 +33,8 @@ RUN git lfs install
 RUN pip install --no-cache-dir --upgrade pip
 
 # Install PyTorch first (required by CosyVoice)
-RUN pip install --no-cache-dir torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu124
+# Use PyTorch 2.4.1 which is compatible with CUDA 12.4
+RUN pip install --no-cache-dir torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
 
 # Install CosyVoice from pip (if available) or minimal clone
 WORKDIR /opt
