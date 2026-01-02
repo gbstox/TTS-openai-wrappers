@@ -1,13 +1,12 @@
 # CosyVoice TTS Engine Dockerfile
-# Multi-stage build to reduce image size
-# CUDA 12.4 runtime with Python 3.10 (CosyVoice requirement)
+# Optimized build to fit within GitHub Actions disk limits
+# CUDA 12.4 runtime with Python 3.10
 
-# Stage 1: Build and download dependencies
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 \
     python3.10-venv \
@@ -17,6 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git-lfs \
     curl \
     wget \
+    ffmpeg \
+    sox \
+    libsox-dev \
+    libsndfile1 \
     build-essential \
     cmake \
     && rm -rf /var/lib/apt/lists/* \
@@ -26,48 +29,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Initialize git-lfs
 RUN git lfs install
 
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install PyTorch first (required by CosyVoice)
+RUN pip install --no-cache-dir torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu124
+
+# Install CosyVoice from pip (if available) or minimal clone
 WORKDIR /opt
 
-# Clone CosyVoice repository (shallow clone to save space)
-RUN git clone --depth 1 --recursive https://github.com/FunAudioLLM/CosyVoice.git && \
+# Clone only the necessary CosyVoice code (minimal, no examples/docs)
+RUN git clone --depth 1 --filter=blob:none --sparse https://github.com/FunAudioLLM/CosyVoice.git && \
     cd CosyVoice && \
-    rm -rf .git third_party/*/.git
+    git sparse-checkout set cosyvoice third_party && \
+    git submodule update --init --depth 1 third_party/Matcha-TTS && \
+    rm -rf .git examples asset docker runtime tools && \
+    pip install --no-cache-dir -r requirements.txt
 
 WORKDIR /opt/CosyVoice
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0
+# Install additional runtime dependencies
+RUN pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0
 
-# Download CosyVoice3 model from HuggingFace
+# Download CosyVoice3 model from HuggingFace (smallest variant)
 RUN mkdir -p pretrained_models && \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/Fun-CosyVoice3-0.5B-2512', local_dir='pretrained_models/Fun-CosyVoice3-0.5B')"
-
-# Stage 2: Runtime image
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 \
-    python3-pip \
-    ffmpeg \
-    sox \
-    libsox-dev \
-    libsndfile1 \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.10 /usr/bin/python
-
-# Copy installed Python packages from builder
-COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
-COPY --from=builder /usr/lib/python3/dist-packages /usr/lib/python3/dist-packages
-
-# Copy CosyVoice code and model
-COPY --from=builder /opt/CosyVoice /opt/CosyVoice
+    python -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/Fun-CosyVoice3-0.5B-2512', local_dir='pretrained_models/Fun-CosyVoice3-0.5B', ignore_patterns=['*.md', '*.txt', 'examples/*'])"
 
 # Set working directory for the app
 WORKDIR /app
@@ -84,6 +70,9 @@ COPY engines/registry.py /app/engines/registry.py
 COPY engines/cosyvoice/ /app/engines/cosyvoice/
 COPY api/ /app/api/
 COPY deploy/runpod/ /app/deploy/runpod/
+
+# Clean up pip cache and temp files
+RUN pip cache purge && rm -rf /root/.cache /tmp/*
 
 # Environment variables
 ENV PYTHONPATH=/app:/opt/CosyVoice
