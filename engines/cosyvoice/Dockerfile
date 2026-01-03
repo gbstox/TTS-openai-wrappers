@@ -50,7 +50,8 @@ RUN git clone --depth 1 --filter=blob:none --sparse https://github.com/FunAudioL
 WORKDIR /opt/CosyVoice
 
 # Install additional runtime dependencies
-RUN pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0
+# Pin pyyaml to fix Loader.max_depth compatibility issue
+RUN pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0 pyyaml==6.0.1
 
 # Download CosyVoice3 model from HuggingFace (smallest variant)
 RUN mkdir -p pretrained_models && \
