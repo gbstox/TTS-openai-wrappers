@@ -66,7 +66,7 @@ class CosyVoiceEngine(BaseTTSEngine):
             try:
                 from cosyvoice.cli.cosyvoice import CosyVoice3
 
-                self._model = CosyVoice3(MODEL_DIR, load_jit=False, load_trt=False)
+                self._model = CosyVoice3(MODEL_DIR)
                 logger.info("CosyVoice3 model loaded successfully")
             except ImportError as e:
                 raise ImportError(
