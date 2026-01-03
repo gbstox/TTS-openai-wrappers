@@ -59,9 +59,35 @@ class CosyVoiceEngine(BaseTTSEngine):
 
         logger.info("CosyVoice engine initialized")
 
+    def _download_model_if_needed(self):
+        """Download the model from HuggingFace if not present."""
+        import os
+        model_path = os.path.join(MODEL_DIR, "llm.pt")  # Check for a key model file
+        
+        if not os.path.exists(model_path):
+            logger.info(f"Model not found at {MODEL_DIR}, downloading from HuggingFace...")
+            try:
+                from huggingface_hub import snapshot_download
+                
+                # Download CosyVoice3 model
+                snapshot_download(
+                    "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+                    local_dir=MODEL_DIR,
+                    ignore_patterns=["*.md", "*.txt", "examples/*"],
+                )
+                logger.info("Model downloaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to download model: {e}")
+                raise
+        else:
+            logger.info(f"Model already exists at {MODEL_DIR}")
+
     def _load_model(self):
         """Lazily load the CosyVoice model."""
         if self._model is None:
+            # Download model if not present
+            self._download_model_if_needed()
+            
             logger.info(f"Loading CosyVoice3 model from {MODEL_DIR}")
             try:
                 from cosyvoice.cli.cosyvoice import CosyVoice3

@@ -1,6 +1,6 @@
 # CosyVoice TTS Engine Dockerfile
-# Optimized build to fit within GitHub Actions disk limits
-# CUDA 12.4 runtime with Python 3.10
+# Downloads model at runtime instead of baking into image
+# CUDA 12.4 devel with Python 3.10
 
 FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
@@ -33,13 +33,10 @@ RUN git lfs install
 RUN pip install --no-cache-dir --upgrade pip
 
 # Install PyTorch first (required by CosyVoice)
-# Use PyTorch 2.4.1 which is compatible with CUDA 12.4
 RUN pip install --no-cache-dir torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
 
-# Install CosyVoice from pip (if available) or minimal clone
+# Clone CosyVoice code only (no model download during build)
 WORKDIR /opt
-
-# Clone CosyVoice with sparse checkout (only needed directories)
 RUN git clone --depth 1 --filter=blob:none --sparse https://github.com/FunAudioLLM/CosyVoice.git && \
     cd CosyVoice && \
     git sparse-checkout set cosyvoice third_party requirements.txt && \
@@ -49,18 +46,19 @@ RUN git clone --depth 1 --filter=blob:none --sparse https://github.com/FunAudioL
 
 WORKDIR /opt/CosyVoice
 
-# Install additional runtime dependencies
-# Pin pyyaml to fix Loader.max_depth compatibility issue
-RUN pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0 pyyaml==6.0.1
+# Install additional dependencies
+RUN pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0 huggingface_hub
 
-# Download CosyVoice3 model from HuggingFace (smallest variant)
-RUN mkdir -p pretrained_models && \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/Fun-CosyVoice3-0.5B-2512', local_dir='pretrained_models/Fun-CosyVoice3-0.5B', ignore_patterns=['*.md', '*.txt', 'examples/*'])"
+# Force reinstall pyyaml for HyperPyYAML compatibility
+RUN pip install --no-cache-dir --force-reinstall "pyyaml>=6.0.2"
+
+# Create model directory (will be populated at runtime)
+RUN mkdir -p pretrained_models
 
 # Set working directory for the app
 WORKDIR /app
 
-# Copy shared requirements first (for layer caching)
+# Copy shared requirements
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -73,11 +71,7 @@ COPY engines/cosyvoice/ /app/engines/cosyvoice/
 COPY api/ /app/api/
 COPY deploy/runpod/ /app/deploy/runpod/
 
-# Force reinstall pyyaml to fix Loader.max_depth compatibility (must be after all other installs)
-# The issue is HyperPyYAML needs pyyaml>=6.0.2 for max_depth support
-RUN pip install --no-cache-dir --force-reinstall "pyyaml>=6.0.2"
-
-# Clean up pip cache and temp files
+# Clean up
 RUN pip cache purge && rm -rf /root/.cache /tmp/*
 
 # Environment variables
@@ -86,13 +80,12 @@ ENV PYTHONUNBUFFERED=1
 ENV TTS_ENGINE=cosyvoice
 ENV COSYVOICE_PATH=/opt/CosyVoice
 ENV COSYVOICE_MODEL_DIR=/opt/CosyVoice/pretrained_models/Fun-CosyVoice3-0.5B
+# HuggingFace cache for model downloads (can be mounted to volume)
+ENV HF_HOME=/opt/CosyVoice/pretrained_models/.cache
 
-# Expose port for API
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=180s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=30s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command: run the RunPod serverless handler
 CMD ["python", "/app/deploy/runpod/handler.py"]
