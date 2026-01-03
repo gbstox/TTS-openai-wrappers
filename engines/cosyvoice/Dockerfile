@@ -2,7 +2,7 @@
 # Optimized build to fit within GitHub Actions disk limits
 # CUDA 12.4 runtime with Python 3.10
 
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
