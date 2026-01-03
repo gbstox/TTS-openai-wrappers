@@ -73,6 +73,9 @@ COPY engines/cosyvoice/ /app/engines/cosyvoice/
 COPY api/ /app/api/
 COPY deploy/runpod/ /app/deploy/runpod/
 
+# Force reinstall pyyaml to fix Loader.max_depth compatibility (must be after all other installs)
+RUN pip install --no-cache-dir --force-reinstall pyyaml==6.0.1
+
 # Clean up pip cache and temp files
 RUN pip cache purge && rm -rf /root/.cache /tmp/*
 
