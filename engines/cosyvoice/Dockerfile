@@ -43,6 +43,12 @@ RUN conda activate cosyvoice && conda install -y -c conda-forge pynini==2.1.5
 RUN conda activate cosyvoice && cd CosyVoice && \
     pip install -r requirements.txt --no-cache-dir
 
+# CRITICAL: Force upgrade pyyaml to fix HyperPyYAML max_depth compatibility
+# CosyVoice requirements install old pyyaml that causes "'Loader' object has no attribute 'max_depth'"
+RUN conda activate cosyvoice && \
+    pip install --no-cache-dir --force-reinstall --upgrade "pyyaml>=6.0.2" && \
+    python -c "import yaml; print('PyYAML version:', yaml.__version__)"
+
 # Install additional dependencies for our wrapper
 RUN conda activate cosyvoice && \
     pip install --no-cache-dir pydub runpod huggingface_hub
