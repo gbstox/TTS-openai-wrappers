@@ -5,7 +5,7 @@ FROM pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install minimal system dependencies
+# Install system dependencies (including build tools for pyworld)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     git-lfs \
@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sox \
     libsox-dev \
     libsndfile1 \
+    build-essential \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git lfs install
