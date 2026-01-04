@@ -1,49 +1,61 @@
 # CosyVoice TTS Engine Dockerfile
-# Uses PyTorch base image (has PyTorch + CUDA pre-installed = faster build)
+# Based on official CosyVoice Dockerfile for tested dependencies
 
-# Use PyTorch 2.5.1 for transformers compatibility (register_fake API)
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+SHELL ["/bin/bash", "--login", "-c"]
 
-# Install system dependencies (including build tools for pyworld)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    git-lfs \
-    curl \
-    ffmpeg \
-    sox \
-    libsox-dev \
-    libsndfile1 \
-    build-essential \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies (matching official Dockerfile)
+RUN apt-get update -y --fix-missing && \
+    apt-get install -y git build-essential curl wget ffmpeg unzip git-lfs sox libsox-dev && \
+    apt-get clean && \
+    git lfs install
 
-RUN git lfs install
+# Install miniforge (conda) - same as official
+RUN wget --quiet https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -O ~/miniforge.sh && \
+    /bin/bash ~/miniforge.sh -b -p /opt/conda && \
+    rm ~/miniforge.sh && \
+    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc
 
-# Clone CosyVoice (code only, no model)
+ENV PATH=/opt/conda/bin:$PATH
+
+RUN conda config --add channels conda-forge && \
+    conda config --set channel_priority strict
+
+# Create conda environment
+RUN conda create -y -n cosyvoice python=3.10
+ENV CONDA_DEFAULT_ENV=cosyvoice
+ENV PATH=/opt/conda/bin:/opt/conda/envs/cosyvoice/bin:$PATH
+
 WORKDIR /opt
-RUN git clone --depth 1 https://github.com/FunAudioLLM/CosyVoice.git && \
-    cd CosyVoice && \
-    rm -rf .git examples asset docker runtime tools
 
-WORKDIR /opt/CosyVoice
+# Clone CosyVoice
+RUN git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
+
+# Install pynini via conda (required, can't pip install easily)
+RUN conda activate cosyvoice && conda install -y -c conda-forge pynini==2.1.5
 
 # Install CosyVoice requirements
-RUN pip install --no-cache-dir -r requirements.txt
+RUN conda activate cosyvoice && cd CosyVoice && \
+    pip install -r requirements.txt --no-cache-dir
 
-# Install additional dependencies
-RUN pip install --no-cache-dir pydub>=0.25.0 runpod>=1.6.0 huggingface_hub
+# Install additional dependencies for our wrapper
+RUN conda activate cosyvoice && \
+    pip install --no-cache-dir pydub runpod huggingface_hub
 
-# Create model directory
-RUN mkdir -p pretrained_models
+# Create model directory (will download at runtime)
+RUN mkdir -p /opt/CosyVoice/pretrained_models
 
-# Set working directory for the app
+# Set up app directory
 WORKDIR /app
 
-# Copy application code
+# Copy our wrapper code
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN conda activate cosyvoice && pip install --no-cache-dir -r requirements.txt
 
 COPY config/ /app/config/
 COPY engines/__init__.py /app/engines/__init__.py
@@ -53,25 +65,16 @@ COPY engines/cosyvoice/ /app/engines/cosyvoice/
 COPY api/ /app/api/
 COPY deploy/runpod/ /app/deploy/runpod/
 
-# CRITICAL: Force upgrade pyyaml LAST to fix HyperPyYAML max_depth compatibility
-# Some CosyVoice deps install old pyyaml, this ensures we have 6.0.2+
-RUN pip install --no-cache-dir --force-reinstall --upgrade "pyyaml>=6.0.2" && \
-    python -c "import yaml; print('PyYAML version:', yaml.__version__)"
-
-# Clean up
-RUN pip cache purge && rm -rf /root/.cache /tmp/*
-
 # Environment variables
-ENV PYTHONPATH=/app:/opt/CosyVoice
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app:/opt/CosyVoice:/opt/CosyVoice/third_party/Matcha-TTS
 ENV TTS_ENGINE=cosyvoice
 ENV COSYVOICE_PATH=/opt/CosyVoice
 ENV COSYVOICE_MODEL_DIR=/opt/CosyVoice/pretrained_models/Fun-CosyVoice3-0.5B
-ENV HF_HOME=/opt/CosyVoice/pretrained_models/.cache
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "/app/deploy/runpod/handler.py"]
+# Use conda environment for runtime
+CMD ["conda", "run", "-n", "cosyvoice", "python", "/app/deploy/runpod/handler.py"]
