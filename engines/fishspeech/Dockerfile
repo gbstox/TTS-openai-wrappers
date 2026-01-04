@@ -46,7 +46,7 @@ RUN uv venv .venv --python 3.12 && \
     uv pip install -e ".[stable]" && \
     uv pip install httpx pydub runpod
 
-# Create checkpoints directory (model will be downloaded at runtime)
+# Create checkpoints directory (model downloaded at runtime with user's HF_TOKEN)
 RUN mkdir -p checkpoints
 
 # Set up application directory
