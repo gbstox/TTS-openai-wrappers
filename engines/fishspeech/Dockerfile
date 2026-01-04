@@ -46,10 +46,8 @@ RUN uv venv .venv --python 3.12 && \
     uv pip install -e ".[stable]" && \
     uv pip install httpx pydub runpod
 
-# Download OpenAudio S1-mini model from HuggingFace
-RUN mkdir -p checkpoints && \
-    . .venv/bin/activate && \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download('fishaudio/openaudio-s1-mini', local_dir='checkpoints/openaudio-s1-mini', ignore_patterns=['*.md'])"
+# Create checkpoints directory (model will be downloaded at runtime)
+RUN mkdir -p checkpoints
 
 # Set up application directory
 WORKDIR /app
@@ -66,7 +64,7 @@ COPY engines/fishspeech/ /app/engines/fishspeech/
 COPY api/ /app/api/
 COPY deploy/runpod/ /app/deploy/runpod/
 
-# Create startup script that runs both Fish Speech API and RunPod handler
+# Create startup script that downloads model and runs services
 RUN printf '%s\n' \
     '#!/bin/bash' \
     'set -e' \
@@ -76,9 +74,29 @@ RUN printf '%s\n' \
     '' \
     '# Set paths' \
     'export PYTHONPATH="/app:/opt/fish-speech:$PYTHONPATH"' \
-    'export LLAMA_CHECKPOINT_PATH="/opt/fish-speech/checkpoints/openaudio-s1-mini"' \
-    'export DECODER_CHECKPOINT_PATH="/opt/fish-speech/checkpoints/openaudio-s1-mini/codec.pth"' \
+    'export CHECKPOINT_DIR="/opt/fish-speech/checkpoints/openaudio-s1-mini"' \
+    'export LLAMA_CHECKPOINT_PATH="$CHECKPOINT_DIR"' \
+    'export DECODER_CHECKPOINT_PATH="$CHECKPOINT_DIR/codec.pth"' \
     'export DECODER_CONFIG_NAME="modded_dac_vq"' \
+    '' \
+    '# Download model if not present' \
+    'if [ ! -f "$CHECKPOINT_DIR/codec.pth" ]; then' \
+    '  echo "Downloading OpenAudio S1-mini model..."' \
+    '  python -c "' \
+    'from huggingface_hub import snapshot_download' \
+    'import os' \
+    'token = os.environ.get(\"HF_TOKEN\")' \
+    'snapshot_download(' \
+    '    \"fishaudio/openaudio-s1-mini\",' \
+    '    local_dir=\"/opt/fish-speech/checkpoints/openaudio-s1-mini\",' \
+    '    token=token,' \
+    '    ignore_patterns=[\"*.md\"]' \
+    ')' \
+    '"' \
+    '  echo "Model downloaded successfully!"' \
+    'else' \
+    '  echo "Model already present."' \
+    'fi' \
     '' \
     '# Start Fish Speech API server in background' \
     'echo "Starting Fish Speech API server..."' \
@@ -92,7 +110,7 @@ RUN printf '%s\n' \
     '' \
     '# Wait for API server to be ready' \
     'echo "Waiting for Fish Speech API to be ready..."' \
-    'for i in {1..60}; do' \
+    'for i in {1..120}; do' \
     '  if curl -s http://127.0.0.1:8080/v1/health > /dev/null 2>&1; then' \
     '    echo "Fish Speech API is ready!"' \
     '    break' \
@@ -110,11 +128,11 @@ RUN printf '%s\n' \
 ENV PYTHONPATH=/app:/opt/fish-speech
 ENV TTS_ENGINE=fishspeech
 ENV FISH_API_URL=http://127.0.0.1:8080
+# HF_TOKEN should be provided at runtime for gated model access
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=30s --start-period=180s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=30s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8080/v1/health || exit 1
 
 CMD ["/app/start.sh"]
-
