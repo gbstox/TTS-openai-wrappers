@@ -21,11 +21,15 @@ wheels/
 *.egg
 
 # Virtual environments
-.env
 .venv
 env/
 venv/
 ENV/
+
+# Environment files (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
 
 # IDE
 .idea/
@@ -70,7 +74,6 @@ Thumbs.db
 *.aac
 
 # Secrets (never commit these!)
-.env.local
 .env.production
 secrets/
 
