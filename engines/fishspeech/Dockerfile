@@ -7,12 +7,14 @@ FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
+# Install system dependencies + Python 3.12 from deadsnakes PPA
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3.12-dev \
-    python3-pip \
     git \
     git-lfs \
     curl \
