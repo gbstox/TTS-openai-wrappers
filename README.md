@@ -5,9 +5,9 @@ OpenAI-compatible Text-to-Speech API wrappers for popular open-source TTS models
 ## Features
 
 - **OpenAI API Compatible**: Drop-in replacement for OpenAI's `/v1/audio/speech` endpoint
-- **Multiple Engines**: Support for Kokoro, with more engines coming (Fish Audio, Dia, etc.)
+- **Multiple Engines**: Kokoro, Fish Speech (OpenAudio S1), with more coming
 - **Streaming Support**: Real-time audio streaming for low-latency applications
-- **Multi-Language**: Full language support per engine (Kokoro supports 9 languages)
+- **Multi-Language**: Full language support per engine
 - **Flexible Deployment**: RunPod serverless, Modal, Docker, or bare metal
 - **Optional Authentication**: API key authentication that can be enabled/disabled
 
@@ -16,12 +16,25 @@ OpenAI-compatible Text-to-Speech API wrappers for popular open-source TTS models
 | Engine | Languages | Voices | Status |
 |--------|-----------|--------|--------|
 | **Kokoro** | 9 (EN, ES, FR, HI, IT, JA, PT, ZH) | 45+ | ✅ Ready |
-| Fish Audio | - | - | 🚧 Planned |
-| Dia | - | - | 🚧 Planned |
+| **Fish Speech** | 8 (EN, ZH, JA, KO, FR, DE, ES, AR) | 10+ | ✅ Ready |
+| CosyVoice | 5 (ZH, EN, JA, KO, Cantonese) | 6+ | 🚧 Experimental |
+| Dia | - | - | 📋 Planned |
 
 ## Quick Start
 
-### Using with OpenAI SDK
+### 1. Setup Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/gbstox/TTS-openai-wrappers.git
+cd TTS-openai-wrappers
+
+# Copy environment template and add your credentials
+cp .env.example .env
+# Edit .env with your HF_TOKEN, RUNPOD_API_KEY, etc.
+```
+
+### 2. Using with OpenAI SDK
 
 ```python
 from openai import OpenAI
@@ -40,7 +53,7 @@ response = client.audio.speech.create(
 response.stream_to_file("output.mp3")
 ```
 
-### Using with cURL
+### 3. Using with cURL
 
 ```bash
 curl -X POST "http://localhost:8000/v1/audio/speech" \
@@ -53,7 +66,7 @@ curl -X POST "http://localhost:8000/v1/audio/speech" \
   --output output.mp3
 ```
 
-### Using with RunPod
+### 4. Using with RunPod
 
 ```python
 import runpod
@@ -72,6 +85,39 @@ audio_bytes = base64.b64decode(result["audio"])
 with open("output.mp3", "wb") as f:
     f.write(audio_bytes)
 ```
+
+## RunPod Endpoints
+
+Pre-built Docker images are available on GitHub Container Registry:
+
+| Engine | Image | GPU Recommended |
+|--------|-------|-----------------|
+| Kokoro | `ghcr.io/gbstox/tts-kokoro:latest` | RTX 3090+ |
+| Fish Speech | `ghcr.io/gbstox/tts-fishspeech:latest` | RTX 3090+ (24GB VRAM) |
+
+### Creating a RunPod Endpoint
+
+1. **Create a Template** on [RunPod Console](https://www.runpod.io/console/serverless):
+   - Container Image: `ghcr.io/gbstox/tts-kokoro:latest`
+   - Container Disk: 20 GB (Kokoro) or 30 GB (Fish Speech)
+   - Environment Variables:
+     - `TTS_ENGINE`: `kokoro` or `fishspeech`
+     - `HF_TOKEN`: Your HuggingFace token (required for Fish Speech)
+
+2. **Create an Endpoint** using the template:
+   - GPU: `AMPERE_24` (RTX 3090/4090) or `AMPERE_48` (A6000/A40)
+   - Workers: Min 0, Max 3
+   - Idle Timeout: 5 seconds
+
+3. **Test the endpoint**:
+   ```bash
+   curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
+     -H "Authorization: Bearer YOUR_RUNPOD_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"input": {"input": "Hello world!", "voice": "af_heart", "response_format": "mp3"}}'
+   ```
+
+See [deploy/runpod/README.md](deploy/runpod/README.md) for detailed instructions.
 
 ## API Reference
 
@@ -104,20 +150,24 @@ List available models.
 
 Health check endpoint.
 
+## Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TTS_ENGINE` | `kokoro` | Engine: `kokoro`, `fishspeech`, `cosyvoice` |
+| `TTS_API_KEY` | `""` | API key for authentication (empty = no auth) |
+| `TTS_PRELOAD_VOICES` | `none` | `all`, `none`, or comma-separated voice IDs |
+| `TTS_MAX_TEXT_LENGTH` | `10000` | Maximum input text length |
+| `HF_TOKEN` | `""` | HuggingFace token for gated models |
+| `RUNPOD_API_KEY` | `""` | RunPod API key for deployments |
+
 ## Deployment
 
 ### RunPod Serverless
 
-1. **Push to main branch** — GitHub Actions automatically builds and pushes the image to GHCR.
-
-2. **Create RunPod Endpoint:**
-   - Image: `ghcr.io/gbstox/tts-kokoro:latest`
-   - Start Command: `python /app/deploy/runpod/handler.py`
-   - GPU: Any (RTX 3090+ recommended)
-
-3. **Set RunPod API key** for calling the endpoint.
-
-See [deploy/runpod/README.md](deploy/runpod/README.md) for detailed instructions.
+Push to `main` branch → GitHub Actions builds and pushes images to GHCR → Create RunPod endpoint using the image.
 
 ### Local Docker
 
@@ -139,55 +189,38 @@ pip install -r engines/kokoro/requirements.txt
 # Install espeak-ng (required for Kokoro)
 # macOS: brew install espeak-ng
 # Ubuntu: apt-get install espeak-ng
-# Windows: Download from https://github.com/espeak-ng/espeak-ng/releases
 
 # Run the server
 TTS_ENGINE=kokoro uvicorn api.app:app --reload
 ```
 
-## Configuration
+## Available Voices
 
-All configuration is via environment variables:
+### Kokoro
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TTS_ENGINE` | `kokoro` | Engine to use |
-| `TTS_AUTH_ENABLED` | `false` | Enable API key authentication |
-| `TTS_API_KEYS` | `""` | Comma-separated valid API keys |
-| `TTS_PRELOAD_VOICES` | `all` | `all`, `none`, or comma-separated voice IDs |
-| `TTS_DEFAULT_VOICE` | *engine default* | Override default voice |
-| `TTS_MAX_TEXT_LENGTH` | `10000` | Maximum input text length |
-| `TTS_HOST` | `0.0.0.0` | Server host |
-| `TTS_PORT` | `8000` | Server port |
-
-## Available Voices (Kokoro)
-
-### American English
+#### American English
 `af_heart`, `af_alloy`, `af_aoede`, `af_bella`, `af_jessica`, `af_kore`, `af_nicole`, `af_nova`, `af_river`, `af_sarah`, `af_sky`, `am_adam`, `am_echo`, `am_eric`, `am_fenrir`, `am_liam`, `am_michael`, `am_onyx`, `am_puck`, `am_santa`
 
-### British English
+#### British English
 `bf_alice`, `bf_emma`, `bf_isabella`, `bf_lily`, `bm_daniel`, `bm_fable`, `bm_george`, `bm_lewis`
 
-### Spanish
-`ef_dora`, `em_alex`, `em_santa`
+#### Other Languages
+- **Spanish**: `ef_dora`, `em_alex`, `em_santa`
+- **French**: `ff_siwis`
+- **Hindi**: `hf_alpha`, `hf_beta`, `hm_omega`, `hm_psi`
+- **Italian**: `if_sara`, `im_nicola`
+- **Japanese**: `jf_alpha`, `jf_gongitsune`, `jf_nezumi`, `jf_tebukuro`, `jm_kumo`
+- **Portuguese**: `pf_dora`, `pm_alex`, `pm_santa`
+- **Chinese**: `zf_xiaobei`, `zf_xiaoni`, `zf_xiaoxiao`, `zf_xiaoyi`, `zm_yunjian`, `zm_yunxi`, `zm_yunxia`, `zm_yunyang`
 
-### French
-`ff_siwis`
+### Fish Speech (OpenAudio S1-mini)
 
-### Hindi
-`hf_alpha`, `hf_beta`, `hm_omega`, `hm_psi`
-
-### Italian
-`if_sara`, `im_nicola`
-
-### Japanese
-`jf_alpha`, `jf_gongitsune`, `jf_nezumi`, `jf_tebukuro`, `jm_kumo`
-
-### Portuguese (Brazilian)
-`pf_dora`, `pm_alex`, `pm_santa`
-
-### Mandarin Chinese
-`zf_xiaobei`, `zf_xiaoni`, `zf_xiaoxiao`, `zf_xiaoyi`, `zm_yunjian`, `zm_yunxi`, `zm_yunxia`, `zm_yunyang`
+- **English**: `英文女` (Female), `英文男` (Male)
+- **Chinese**: `中文女` (Female), `中文男` (Male)
+- **Japanese**: `日文女` (Female), `日文男` (Male)
+- **Korean**: `韩文女` (Female), `韩文男` (Male)
+- **French**: `法语女` (Female)
+- **German**: `德语女` (Female)
 
 ## Adding a New Engine
 
@@ -233,7 +266,9 @@ TTS-openai-wrappers/
 ├── engines/                  # TTS engine implementations
 │   ├── base.py              # Abstract base class
 │   ├── registry.py          # Engine discovery
-│   └── kokoro/              # Kokoro engine
+│   ├── kokoro/              # Kokoro engine
+│   ├── fishspeech/          # Fish Speech engine
+│   └── cosyvoice/           # CosyVoice engine
 ├── api/                     # FastAPI application
 │   ├── app.py              # App factory
 │   ├── routes.py           # API endpoints
@@ -244,6 +279,7 @@ TTS-openai-wrappers/
 │   ├── runpod/             # RunPod serverless
 │   ├── modal/              # Modal (planned)
 │   └── local/              # Docker Compose
+├── .env.example            # Environment template
 └── .github/workflows/       # CI/CD
 ```
 
@@ -254,5 +290,6 @@ Apache 2.0 — see individual engine directories for their respective licenses.
 ## Acknowledgements
 
 - [Kokoro](https://github.com/hexgrad/kokoro) by hexgrad
+- [Fish Speech](https://github.com/fishaudio/fish-speech) by FishAudio
+- [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) by FunAudioLLM
 - [OpenAI](https://platform.openai.com/docs/api-reference/audio/createSpeech) for the API specification
-
