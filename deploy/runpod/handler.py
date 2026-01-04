@@ -140,18 +140,48 @@ def handler(job: dict) -> dict:
             f"speed={speed}, format={output_format}"
         )
 
-        # Get language code for this voice
-        from engines.kokoro.voices import VOICE_TO_LANGUAGE
-        lang_code = VOICE_TO_LANGUAGE.get(voice, "a")
-
-        # Call synchronous synthesis directly
-        audio_bytes = engine._synthesize_sync(
-            text=text,
-            voice=voice,
-            speed=speed,
-            output_format=output_format,
-            lang_code=lang_code,
-        )
+        # Use the engine's synchronous synthesis method
+        # Different engines may have different internal implementations
+        if hasattr(engine, "_synthesize_sync"):
+            # Kokoro-style engine with lang_code support
+            try:
+                from engines.kokoro.voices import VOICE_TO_LANGUAGE
+                lang_code = VOICE_TO_LANGUAGE.get(voice, "a")
+            except ImportError:
+                lang_code = "a"  # Default fallback
+            
+            audio_bytes = engine._synthesize_sync(
+                text=text,
+                voice=voice,
+                speed=speed,
+                output_format=output_format,
+                lang_code=lang_code,
+            )
+        else:
+            # Generic engine - use async method with event loop
+            import asyncio
+            
+            async def synth():
+                return await engine.synthesize(
+                    text=text,
+                    voice=voice,
+                    speed=speed,
+                    output_format=output_format,
+                )
+            
+            # Run async in sync context
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            
+            if loop and loop.is_running():
+                # Already in async context - use run_in_executor
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    audio_bytes = pool.submit(asyncio.run, synth()).result()
+            else:
+                audio_bytes = asyncio.run(synth())
 
         # Encode audio as base64
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
