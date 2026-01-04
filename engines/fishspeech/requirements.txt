@@ -1,0 +1,8 @@
+# Fish Speech Engine Requirements
+# Note: Fish Speech itself is installed via uv in the Dockerfile
+# These are additional dependencies for our wrapper
+
+httpx>=0.27.0
+pydub>=0.25.0
+runpod>=1.6.0
+
