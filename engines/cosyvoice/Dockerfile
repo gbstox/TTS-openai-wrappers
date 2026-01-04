@@ -1,7 +1,8 @@
 # CosyVoice TTS Engine Dockerfile
 # Uses PyTorch base image (has PyTorch + CUDA pre-installed = faster build)
 
-FROM pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime
+# Use PyTorch 2.5.1 for transformers compatibility (register_fake API)
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
