@@ -52,6 +52,11 @@ COPY engines/cosyvoice/ /app/engines/cosyvoice/
 COPY api/ /app/api/
 COPY deploy/runpod/ /app/deploy/runpod/
 
+# CRITICAL: Force upgrade pyyaml LAST to fix HyperPyYAML max_depth compatibility
+# Some CosyVoice deps install old pyyaml, this ensures we have 6.0.2+
+RUN pip install --no-cache-dir --force-reinstall --upgrade "pyyaml>=6.0.2" && \
+    python -c "import yaml; print('PyYAML version:', yaml.__version__)"
+
 # Clean up
 RUN pip cache purge && rm -rf /root/.cache /tmp/*
 
