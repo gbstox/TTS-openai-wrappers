@@ -1,0 +1,28 @@
+# Qwen3-TTS Engine Dependencies
+# https://huggingface.co/collections/Qwen/qwen3-tts
+
+# Core Qwen3-TTS dependencies
+transformers>=4.44.0
+torch>=2.1.0
+torchaudio>=2.1.0
+
+# Audio processing
+soundfile>=0.12.0
+pydub>=0.25.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Model download
+huggingface_hub>=0.20.0
+
+# RunPod serverless
+runpod>=1.6.0
+
+# Additional dependencies for model inference
+accelerate>=0.24.0
+safetensors>=0.4.0
+sentencepiece>=0.1.99
+
+# PyTorch CUDA (comment out for CPU-only)
+# torch>=2.1.0+cu121
+
