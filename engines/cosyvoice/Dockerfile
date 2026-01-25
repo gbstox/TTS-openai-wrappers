@@ -10,7 +10,8 @@ SHELL ["/bin/bash", "--login", "-c"]
 
 # Install system dependencies (matching official Dockerfile)
 RUN apt-get update -y --fix-missing && \
-    apt-get install -y git build-essential curl wget ffmpeg unzip git-lfs sox libsox-dev && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends git build-essential curl wget ffmpeg unzip git-lfs sox libsox-dev ca-certificates && \
     apt-get clean && \
     git lfs install
 

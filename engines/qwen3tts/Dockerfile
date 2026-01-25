@@ -13,7 +13,8 @@ SHELL ["/bin/bash", "-c"]
 
 # System dependencies
 RUN apt-get update -y --fix-missing && \
-    apt-get install -y \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
         python3.11 \
         python3.11-venv \
         python3-pip \
@@ -21,6 +22,7 @@ RUN apt-get update -y --fix-missing && \
         git \
         git-lfs \
         curl \
+        ca-certificates \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
