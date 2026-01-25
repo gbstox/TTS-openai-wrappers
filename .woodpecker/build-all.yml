@@ -21,7 +21,7 @@ when:
 steps:
   # Login to container registry
   login:
-    image: docker:24-cli
+    image: docker:27-cli
     commands:
       - echo "Logging into GitHub Container Registry..."
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
@@ -33,7 +33,7 @@ steps:
 
   # Build Qwen3-TTS
   build-qwen3tts:
-    image: docker:24-cli
+    image: docker:27-cli
     commands:
       - echo "=== Building Qwen3-TTS ==="
       - docker build 
@@ -50,7 +50,7 @@ steps:
 
   # Build Kokoro
   build-kokoro:
-    image: docker:24-cli
+    image: docker:27-cli
     commands:
       - echo "=== Building Kokoro ==="
       - docker build 
@@ -67,7 +67,7 @@ steps:
 
   # Build CosyVoice
   build-cosyvoice:
-    image: docker:24-cli
+    image: docker:27-cli
     commands:
       - echo "=== Building CosyVoice ==="
       - docker build 
@@ -84,7 +84,7 @@ steps:
 
   # Build Fish Speech
   build-fishspeech:
-    image: docker:24-cli
+    image: docker:27-cli
     commands:
       - echo "=== Building Fish Speech ==="
       - docker build 

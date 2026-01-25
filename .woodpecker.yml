@@ -30,7 +30,7 @@ matrix:
 steps:
   # Build and push Docker image
   build-and-push:
-    image: docker:24-dind
+    image: docker:27-dind
     privileged: true
     environment:
       - DOCKER_HOST=tcp://docker:2376
@@ -116,7 +116,7 @@ steps:
 
   # Build only (no push) for PRs and testing
   build-test:
-    image: docker:24-dind
+    image: docker:27-dind
     privileged: true
     environment:
       - DOCKER_HOST=tcp://docker:2376
@@ -135,7 +135,7 @@ steps:
 
 services:
   docker:
-    image: docker:24-dind
+    image: docker:27-dind
     privileged: true
     environment:
       - DOCKER_TLS_CERTDIR=/certs
