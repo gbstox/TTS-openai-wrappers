@@ -1,7 +1,7 @@
 # Woodpecker CI - Build All TTS Engines (Sequential)
 #
 # Builds engines one at a time to reduce disk usage.
-# Cleans up after each build to free space.
+# Aggressively cleans up after each build to free space.
 #
 # Required Secrets (set in Woodpecker UI):
 #   - github_token: GitHub PAT with packages:write
@@ -16,13 +16,14 @@ when:
   - event: manual
 
 steps:
-  # Initial cleanup
+  # Initial cleanup - remove ALL Docker artifacts
   cleanup:
     image: docker:latest
     commands:
-      - echo "Cleaning up old Docker artifacts..."
-      - docker system prune -f || true
-      - docker builder prune -f || true
+      - echo "=== Initial Cleanup ==="
+      - docker system prune -af || true
+      - docker builder prune -af || true
+      - df -h / || true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -39,7 +40,10 @@ steps:
       - docker push ghcr.io/gbstox/tts-kokoro:latest
       - docker push ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-kokoro ==="
-      - docker builder prune -f || true
+      - echo "Cleaning up Kokoro image and cache..."
+      - docker rmi ghcr.io/gbstox/tts-kokoro:latest ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7} || true
+      - docker builder prune -af || true
+      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -61,7 +65,10 @@ steps:
       - docker push ghcr.io/gbstox/tts-cosyvoice:latest
       - docker push ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-cosyvoice ==="
-      - docker builder prune -f || true
+      - echo "Cleaning up CosyVoice image and cache..."
+      - docker rmi ghcr.io/gbstox/tts-cosyvoice:latest ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7} || true
+      - docker builder prune -af || true
+      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -83,7 +90,10 @@ steps:
       - docker push ghcr.io/gbstox/tts-fishspeech:latest
       - docker push ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-fishspeech ==="
-      - docker builder prune -f || true
+      - echo "Cleaning up Fish Speech image and cache..."
+      - docker rmi ghcr.io/gbstox/tts-fishspeech:latest ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7} || true
+      - docker builder prune -af || true
+      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -91,6 +101,31 @@ steps:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - build-cosyvoice
+
+  # Build Qwen3-TTS (after Fish Speech)
+  build-qwen3tts:
+    image: docker:latest
+    commands:
+      - echo "=== Building Qwen3-TTS ==="
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+      - docker build 
+          -t ghcr.io/gbstox/tts-qwen3tts:latest 
+          -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
+          -f engines/qwen3tts/Dockerfile .
+      - docker push ghcr.io/gbstox/tts-qwen3tts:latest
+      - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
+      - echo "=== Pushed tts-qwen3tts ==="
+      - echo "Cleaning up Qwen3-TTS image and cache..."
+      - docker rmi ghcr.io/gbstox/tts-qwen3tts:latest ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7} || true
+      - docker builder prune -af || true
+      - df -h / || true
+    secrets:
+      - github_token
+      - github_username
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - build-fishspeech
 
   # Summary
   summary:
@@ -101,6 +136,6 @@ steps:
       - echo "  - tts-kokoro:latest"
       - echo "  - tts-cosyvoice:latest"
       - echo "  - tts-fishspeech:latest"
+      - echo "  - tts-qwen3tts:latest"
     depends_on:
-      - build-fishspeech
-# Trigger build 20260125-201052
+      - build-qwen3tts
