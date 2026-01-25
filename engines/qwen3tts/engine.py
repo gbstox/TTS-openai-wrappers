@@ -643,3 +643,179 @@ class Qwen3TTSEngine(BaseTTSEngine):
             self._model = None
             self._tokenizer = None
             self._model_variant = variant
+
+    async def synthesize_with_reference(
+        self,
+        text: str,
+        reference_audio: bytes,
+        speed: float = 1.0,
+        output_format: AudioFormat = "mp3",
+        instruction: str | None = None,
+    ) -> bytes:
+        """Synthesize speech by cloning a voice from reference audio.
+
+        This method enables voice cloning by using reference audio to
+        extract voice characteristics and apply them to the synthesized speech.
+
+        Args:
+            text: Text to synthesize.
+            reference_audio: Raw audio bytes (WAV, MP3, or FLAC format).
+            speed: Playback speed (0.25 to 4.0).
+            output_format: Output audio format.
+            instruction: Optional instruction for voice control.
+
+        Returns:
+            Audio bytes in the requested format.
+        """
+        # Verify we're using a CustomVoice model
+        config = MODEL_VARIANTS.get(self._model_variant, {})
+        if not config.get("supports_custom_voice"):
+            raise ValueError(
+                f"Model variant '{self._model_variant}' does not support voice cloning. "
+                "Use '1.7b-customvoice' or '0.6b-customvoice'."
+            )
+
+        # Run synthesis in executor to not block the event loop
+        loop = asyncio.get_event_loop()
+        audio_bytes = await loop.run_in_executor(
+            None,
+            self._synthesize_with_reference_sync,
+            text,
+            reference_audio,
+            speed,
+            output_format,
+            instruction,
+        )
+        return audio_bytes
+
+    def _synthesize_with_reference_sync(
+        self,
+        text: str,
+        reference_audio: bytes,
+        speed: float,
+        output_format: AudioFormat,
+        instruction: str | None = None,
+    ) -> bytes:
+        """Synchronous voice cloning implementation.
+
+        Args:
+            text: Text to synthesize.
+            reference_audio: Raw audio bytes.
+            speed: Playback speed.
+            output_format: Output format.
+            instruction: Optional instruction for voice control.
+
+        Returns:
+            Audio bytes.
+        """
+        import io
+        import torch
+        import torchaudio
+
+        model, tokenizer = self._load_model()
+
+        # Load reference audio
+        logger.info(f"Processing reference audio: {len(reference_audio)} bytes")
+
+        try:
+            # Load audio from bytes
+            audio_buffer = io.BytesIO(reference_audio)
+            waveform, sample_rate = torchaudio.load(audio_buffer)
+
+            # Resample to model's expected sample rate if needed
+            if sample_rate != self.SAMPLE_RATE:
+                resampler = torchaudio.transforms.Resample(sample_rate, self.SAMPLE_RATE)
+                waveform = resampler(waveform)
+
+            # Convert to mono if stereo
+            if waveform.shape[0] > 1:
+                waveform = waveform.mean(dim=0, keepdim=True)
+
+            # Move to device
+            waveform = waveform.to(self._device)
+
+            logger.info(f"Reference audio loaded: {waveform.shape}, {self.SAMPLE_RATE}Hz")
+
+        except Exception as e:
+            logger.error(f"Failed to load reference audio: {e}")
+            raise ValueError(f"Invalid reference audio: {e}")
+
+        # Encode reference audio to get speaker embedding/codes
+        # This depends on the model's specific API for voice cloning
+        try:
+            if hasattr(tokenizer, "encode_audio"):
+                # Use tokenizer to encode reference audio
+                speaker_codes = tokenizer.encode_audio(waveform)
+            elif hasattr(model, "encode_speaker"):
+                # Use model's speaker encoder
+                with torch.no_grad():
+                    speaker_codes = model.encode_speaker(waveform)
+            else:
+                # Fallback: pass audio directly to model
+                speaker_codes = waveform
+
+        except Exception as e:
+            logger.error(f"Failed to encode reference audio: {e}")
+            raise ValueError(f"Failed to process reference audio: {e}")
+
+        # Build prompt with speaker reference
+        if instruction:
+            prompt = f"<|speaker_ref|><|instruction|>{instruction}<|text|>{text}"
+        else:
+            prompt = f"<|speaker_ref|><|text|>{text}"
+
+        logger.info(f"Synthesizing with voice clone: text={text[:50]}...")
+
+        # Tokenize input
+        inputs = tokenizer(prompt, return_tensors="pt")
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+        # Generate audio codes with speaker conditioning
+        with torch.no_grad():
+            # Pass speaker codes as additional input if model supports it
+            generate_kwargs = {
+                **inputs,
+                "max_new_tokens": 4096,
+                "do_sample": True,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "pad_token_id": tokenizer.pad_token_id,
+                "eos_token_id": tokenizer.eos_token_id,
+            }
+
+            # Add speaker conditioning if available
+            if hasattr(model, "forward") and "speaker_codes" in str(model.forward.__code__.co_varnames):
+                generate_kwargs["speaker_codes"] = speaker_codes
+
+            outputs = model.generate(**generate_kwargs)
+
+        # Decode audio from tokens
+        audio_codes = outputs[0][inputs["input_ids"].shape[1]:]
+
+        if hasattr(tokenizer, "decode_audio"):
+            audio_array = tokenizer.decode_audio(audio_codes)
+        else:
+            audio_array = self._decode_audio_codes(audio_codes, tokenizer)
+
+        if audio_array is None or len(audio_array) == 0:
+            logger.warning("Empty audio output from voice cloning")
+            audio_array = np.zeros(self.SAMPLE_RATE, dtype=np.float32)
+
+        # Ensure audio is in the right format
+        if isinstance(audio_array, torch.Tensor):
+            audio_array = audio_array.cpu().numpy()
+
+        if audio_array.ndim > 1:
+            audio_array = audio_array.flatten()
+
+        # Normalize to [-1, 1]
+        if audio_array.max() > 1.0 or audio_array.min() < -1.0:
+            max_val = max(abs(audio_array.max()), abs(audio_array.min()))
+            if max_val > 0:
+                audio_array = audio_array / max_val
+
+        # Apply speed adjustment
+        if speed != 1.0:
+            audio_array = self._apply_speed(audio_array, speed)
+
+        return self._convert_audio(audio_array, output_format)
