@@ -1,14 +1,11 @@
-# Woodpecker CI - Build All TTS Engines
+# Woodpecker CI - Build All TTS Engines (Sequential)
 #
-# Simple pipeline that builds all engines using host Docker.
-# Best for local Woodpecker installations.
+# Builds engines one at a time to reduce disk usage.
+# Cleans up after each build to free space.
 #
 # Required Secrets (set in Woodpecker UI):
 #   - github_token: GitHub PAT with packages:write
 #   - github_username: Your GitHub username
-#
-# Optional Secrets:
-#   - hf_token: HuggingFace token for model downloads
 
 labels:
   platform: linux/amd64
@@ -25,30 +22,15 @@ steps:
     commands:
       - echo "Logging into GitHub Container Registry..."
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+      - echo "Cleaning up old Docker artifacts..."
+      - docker system prune -f || true
     secrets:
       - github_token
       - github_username
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # Build Qwen3-TTS
-  build-qwen3tts:
-    image: docker:latest
-    commands:
-      - echo "=== Building Qwen3-TTS ==="
-      - docker build 
-          -t ghcr.io/gbstox/tts-qwen3tts:latest 
-          -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
-          -f engines/qwen3tts/Dockerfile .
-      - docker push ghcr.io/gbstox/tts-qwen3tts:latest
-      - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
-      - echo "=== Pushed tts-qwen3tts ==="
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - login
-
-  # Build Kokoro
+  # Build Kokoro (smallest, build first)
   build-kokoro:
     image: docker:latest
     commands:
@@ -60,12 +42,14 @@ steps:
       - docker push ghcr.io/gbstox/tts-kokoro:latest
       - docker push ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-kokoro ==="
+      - echo "Cleaning up build artifacts..."
+      - docker builder prune -f || true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - login
 
-  # Build CosyVoice
+  # Build CosyVoice (after Kokoro)
   build-cosyvoice:
     image: docker:latest
     commands:
@@ -77,12 +61,14 @@ steps:
       - docker push ghcr.io/gbstox/tts-cosyvoice:latest
       - docker push ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-cosyvoice ==="
+      - echo "Cleaning up build artifacts..."
+      - docker builder prune -f || true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - login
+      - build-kokoro
 
-  # Build Fish Speech
+  # Build Fish Speech (after CosyVoice)
   build-fishspeech:
     image: docker:latest
     commands:
@@ -94,10 +80,12 @@ steps:
       - docker push ghcr.io/gbstox/tts-fishspeech:latest
       - docker push ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-fishspeech ==="
+      - echo "Cleaning up build artifacts..."
+      - docker builder prune -f || true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - login
+      - build-cosyvoice
 
   # Summary
   summary:
@@ -105,12 +93,8 @@ steps:
     commands:
       - echo "=== Build Complete ==="
       - echo "Images pushed to ghcr.io/gbstox/:"
-      - echo "  - tts-qwen3tts:latest"
       - echo "  - tts-kokoro:latest"
       - echo "  - tts-cosyvoice:latest"
       - echo "  - tts-fishspeech:latest"
     depends_on:
-      - build-qwen3tts
-      - build-kokoro
-      - build-cosyvoice
       - build-fishspeech

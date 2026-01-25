@@ -1,31 +1,14 @@
 # Woodpecker CI Pipeline for TTS OpenAI Wrappers
 #
-# Builds, pushes, and deploys Docker images for each TTS engine.
-# Images are pushed to GitHub Container Registry (ghcr.io).
-# After push, Runpod endpoints are updated to trigger rolling releases.
+# DISABLED: Use .woodpecker/build-all.yml instead (sequential builds)
 #
-# Required Secrets:
-#   - GITHUB_TOKEN: GitHub token with packages:write scope
-#   - GITHUB_USERNAME: GitHub username for GHCR login
-#   - RUNPOD_API_KEY: Runpod API key for deployment
-#   - RUNPOD_TEMPLATE_<ENGINE>: Template ID for each engine (e.g., RUNPOD_TEMPLATE_QWEN3TTS)
+# This file is kept for reference but disabled to avoid parallel builds
+# that consume too much disk space.
 
-variables:
-  - &registry "ghcr.io"
-  - &owner "gbstox"
-
-# Only build on pushes to main or manual triggers
+# Never run this pipeline
 when:
-  - event: push
-    branch: main
-  - event: manual
-
-matrix:
-  ENGINE:
-    - kokoro
-    - cosyvoice
-    - fishspeech
-    - qwen3tts
+  - event: tag
+    branch: disabled-never-match
 
 steps:
   # Build and push Docker image
