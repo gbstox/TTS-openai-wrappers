@@ -1,0 +1,116 @@
+# Woodpecker CI - Build All TTS Engines
+#
+# Simple pipeline that builds all engines using host Docker.
+# Best for local Woodpecker installations.
+#
+# Required Secrets (set in Woodpecker UI):
+#   - github_token: GitHub PAT with packages:write
+#   - github_username: Your GitHub username
+#
+# Optional Secrets:
+#   - hf_token: HuggingFace token for model downloads
+
+labels:
+  platform: linux/amd64
+
+when:
+  - event: push
+    branch: main
+  - event: manual
+
+steps:
+  # Login to container registry
+  login:
+    image: docker:24-cli
+    commands:
+      - echo "Logging into GitHub Container Registry..."
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+    secrets:
+      - github_token
+      - github_username
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # Build Qwen3-TTS
+  build-qwen3tts:
+    image: docker:24-cli
+    commands:
+      - echo "=== Building Qwen3-TTS ==="
+      - docker build 
+          -t ghcr.io/gbstox/tts-qwen3tts:latest 
+          -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
+          -f engines/qwen3tts/Dockerfile .
+      - docker push ghcr.io/gbstox/tts-qwen3tts:latest
+      - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
+      - echo "=== Pushed tts-qwen3tts ==="
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - login
+
+  # Build Kokoro
+  build-kokoro:
+    image: docker:24-cli
+    commands:
+      - echo "=== Building Kokoro ==="
+      - docker build 
+          -t ghcr.io/gbstox/tts-kokoro:latest 
+          -t ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
+          -f engines/kokoro/Dockerfile .
+      - docker push ghcr.io/gbstox/tts-kokoro:latest
+      - docker push ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
+      - echo "=== Pushed tts-kokoro ==="
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - login
+
+  # Build CosyVoice
+  build-cosyvoice:
+    image: docker:24-cli
+    commands:
+      - echo "=== Building CosyVoice ==="
+      - docker build 
+          -t ghcr.io/gbstox/tts-cosyvoice:latest 
+          -t ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
+          -f engines/cosyvoice/Dockerfile .
+      - docker push ghcr.io/gbstox/tts-cosyvoice:latest
+      - docker push ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
+      - echo "=== Pushed tts-cosyvoice ==="
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - login
+
+  # Build Fish Speech
+  build-fishspeech:
+    image: docker:24-cli
+    commands:
+      - echo "=== Building Fish Speech ==="
+      - docker build 
+          -t ghcr.io/gbstox/tts-fishspeech:latest 
+          -t ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
+          -f engines/fishspeech/Dockerfile .
+      - docker push ghcr.io/gbstox/tts-fishspeech:latest
+      - docker push ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
+      - echo "=== Pushed tts-fishspeech ==="
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - login
+
+  # Summary
+  summary:
+    image: alpine
+    commands:
+      - echo "=== Build Complete ==="
+      - echo "Images pushed to ghcr.io/gbstox/:"
+      - echo "  - tts-qwen3tts:latest"
+      - echo "  - tts-kokoro:latest"
+      - echo "  - tts-cosyvoice:latest"
+      - echo "  - tts-fishspeech:latest"
+    depends_on:
+      - build-qwen3tts
+      - build-kokoro
+      - build-cosyvoice
+      - build-fishspeech

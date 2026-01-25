@@ -1,0 +1,91 @@
+# Woodpecker CI Pipeline for TTS OpenAI Wrappers
+#
+# Builds and pushes Docker images for each TTS engine.
+# Images are pushed to GitHub Container Registry (ghcr.io).
+#
+# Required Secrets:
+#   - GITHUB_TOKEN: GitHub token with packages:write scope
+#   - GITHUB_USERNAME: GitHub username for GHCR login
+#   - HF_TOKEN: (optional) HuggingFace token for model downloads
+
+variables:
+  - &registry "ghcr.io"
+  - &owner "gbstox"
+
+# Only build on pushes to main or manual triggers
+when:
+  - event: push
+    branch: main
+  - event: manual
+
+matrix:
+  ENGINE:
+    - kokoro
+    - cosyvoice
+    - fishspeech
+    - qwen3tts
+
+steps:
+  # Build and push Docker image
+  build-and-push:
+    image: docker:24-dind
+    privileged: true
+    environment:
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
+    commands:
+      - echo "Building ${ENGINE} engine..."
+      
+      # Wait for Docker daemon
+      - sleep 5
+      
+      # Login to GHCR
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+      
+      # Build the image
+      - docker build 
+          -t ghcr.io/${OWNER}/tts-${ENGINE}:latest 
+          -t ghcr.io/${OWNER}/tts-${ENGINE}:${CI_COMMIT_SHA:0:7}
+          -f engines/${ENGINE}/Dockerfile 
+          .
+      
+      # Push the image
+      - docker push ghcr.io/${OWNER}/tts-${ENGINE}:latest
+      - docker push ghcr.io/${OWNER}/tts-${ENGINE}:${CI_COMMIT_SHA:0:7}
+      
+      - echo "Pushed ghcr.io/${OWNER}/tts-${ENGINE}:latest"
+    secrets:
+      - GITHUB_TOKEN
+      - GITHUB_USERNAME
+    when:
+      - event: push
+        branch: main
+
+  # Build only (no push) for PRs and testing
+  build-test:
+    image: docker:24-dind
+    privileged: true
+    environment:
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
+    commands:
+      - echo "Building ${ENGINE} engine (test only)..."
+      - sleep 5
+      - docker build 
+          -t tts-${ENGINE}:test 
+          -f engines/${ENGINE}/Dockerfile 
+          .
+      - echo "Build successful for ${ENGINE}"
+    when:
+      - event: pull_request
+
+services:
+  docker:
+    image: docker:24-dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - /certs/client

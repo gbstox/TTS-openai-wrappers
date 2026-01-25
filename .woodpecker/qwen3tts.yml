@@ -1,0 +1,53 @@
+# Woodpecker CI Pipeline - Qwen3-TTS Engine
+#
+# Builds and pushes the Qwen3-TTS Docker image.
+# This is a standalone pipeline that can be triggered independently.
+#
+# Required Secrets:
+#   - GITHUB_TOKEN: GitHub token with packages:write scope
+#   - GITHUB_USERNAME: GitHub username for GHCR login
+#   - HF_TOKEN: (optional) HuggingFace token for model pre-download
+
+labels:
+  platform: linux/amd64
+
+when:
+  - event: push
+    branch: main
+    path:
+      - "engines/qwen3tts/**"
+      - "api/**"
+      - "config/**"
+      - "requirements.txt"
+  - event: manual
+
+steps:
+  build:
+    image: docker:24-cli
+    commands:
+      - echo "=== Building Qwen3-TTS Docker Image ==="
+      
+      # Login to GitHub Container Registry
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+      
+      # Build with buildx for better caching
+      - docker buildx create --use --name builder || docker buildx use builder
+      
+      # Build and push
+      - |
+        docker buildx build \
+          --platform linux/amd64 \
+          --tag ghcr.io/gbstox/tts-qwen3tts:latest \
+          --tag ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7} \
+          --file engines/qwen3tts/Dockerfile \
+          --push \
+          --cache-from type=registry,ref=ghcr.io/gbstox/tts-qwen3tts:cache \
+          --cache-to type=registry,ref=ghcr.io/gbstox/tts-qwen3tts:cache,mode=max \
+          .
+      
+      - echo "=== Successfully pushed ghcr.io/gbstox/tts-qwen3tts:latest ==="
+    secrets:
+      - GITHUB_TOKEN
+      - GITHUB_USERNAME
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
