@@ -1,0 +1,65 @@
+# Woodpecker CI - Runpod Deployment Only
+#
+# Use this pipeline to deploy an existing image to Runpod without rebuilding.
+# Trigger manually and pass the ENGINE and optional IMAGE_TAG as matrix parameters.
+#
+# Required Secrets:
+#   - RUNPOD_API_KEY: Runpod API key
+#   - RUNPOD_TEMPLATE_<ENGINE>: Template ID for each engine
+
+when:
+  - event: manual
+
+matrix:
+  ENGINE:
+    - qwen3tts
+  IMAGE_TAG:
+    - latest
+
+steps:
+  deploy:
+    image: alpine:latest
+    commands:
+      - apk add --no-cache curl jq
+      
+      # Get template ID from secret
+      - ENGINE_UPPER=$(echo "${ENGINE}" | tr '[:lower:]' '[:upper:]')
+      - TEMPLATE_VAR="RUNPOD_TEMPLATE_${ENGINE_UPPER}"
+      - TEMPLATE_ID=$(printenv "$TEMPLATE_VAR" || echo "")
+      
+      - |
+        if [ -z "$TEMPLATE_ID" ]; then
+          echo "ERROR: No template ID configured for ${ENGINE}"
+          echo "Expected secret: ${TEMPLATE_VAR}"
+          exit 1
+        fi
+      
+      - IMAGE="ghcr.io/gbstox/tts-${ENGINE}:${IMAGE_TAG}"
+      - echo "Deploying ${IMAGE} to Runpod template ${TEMPLATE_ID}..."
+      
+      # Update the template
+      - |
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
+          "https://rest.runpod.io/v1/templates/${TEMPLATE_ID}" \
+          -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -d "{\"imageName\": \"${IMAGE}\"}")
+        
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+        
+        if [ "$HTTP_CODE" -eq 200 ]; then
+          echo "SUCCESS: Updated Runpod template"
+          echo "New image: ${IMAGE}"
+          echo "$BODY" | jq '{id: .id, name: .name, imageName: .imageName}'
+        else
+          echo "FAILED: HTTP $HTTP_CODE"
+          echo "$BODY"
+          exit 1
+        fi
+    secrets:
+      - RUNPOD_API_KEY
+      - RUNPOD_TEMPLATE_KOKORO
+      - RUNPOD_TEMPLATE_COSYVOICE
+      - RUNPOD_TEMPLATE_FISHSPEECH
+      - RUNPOD_TEMPLATE_QWEN3TTS

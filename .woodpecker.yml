@@ -1,12 +1,14 @@
 # Woodpecker CI Pipeline for TTS OpenAI Wrappers
 #
-# Builds and pushes Docker images for each TTS engine.
+# Builds, pushes, and deploys Docker images for each TTS engine.
 # Images are pushed to GitHub Container Registry (ghcr.io).
+# After push, Runpod endpoints are updated to trigger rolling releases.
 #
 # Required Secrets:
 #   - GITHUB_TOKEN: GitHub token with packages:write scope
 #   - GITHUB_USERNAME: GitHub username for GHCR login
-#   - HF_TOKEN: (optional) HuggingFace token for model downloads
+#   - RUNPOD_API_KEY: Runpod API key for deployment
+#   - RUNPOD_TEMPLATE_<ENGINE>: Template ID for each engine (e.g., RUNPOD_TEMPLATE_QWEN3TTS)
 
 variables:
   - &registry "ghcr.io"
@@ -58,6 +60,56 @@ steps:
     secrets:
       - GITHUB_TOKEN
       - GITHUB_USERNAME
+    when:
+      - event: push
+        branch: main
+
+  # Deploy to Runpod - update template to trigger rolling release
+  deploy-runpod:
+    image: alpine:latest
+    commands:
+      - apk add --no-cache curl jq
+      
+      # Get the template ID for this engine from environment
+      # Secret names like RUNPOD_TEMPLATE_QWEN3TTS are converted to uppercase
+      - ENGINE_UPPER=$(echo "${ENGINE}" | tr '[:lower:]' '[:upper:]')
+      - TEMPLATE_VAR="RUNPOD_TEMPLATE_${ENGINE_UPPER}"
+      - TEMPLATE_ID=$(printenv "$TEMPLATE_VAR" || echo "")
+      
+      - |
+        if [ -z "$TEMPLATE_ID" ]; then
+          echo "No template ID configured for ${ENGINE} (expected \$${TEMPLATE_VAR})"
+          echo "Skipping Runpod deployment for ${ENGINE}"
+          exit 0
+        fi
+      
+      - echo "Deploying ${ENGINE} to Runpod template ${TEMPLATE_ID}..."
+      
+      # Update the template with the new image
+      - |
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
+          "https://rest.runpod.io/v1/templates/${TEMPLATE_ID}" \
+          -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -d "{\"imageName\": \"ghcr.io/${OWNER}/tts-${ENGINE}:${CI_COMMIT_SHA:0:7}\"}")
+        
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+        
+        if [ "$HTTP_CODE" -eq 200 ]; then
+          echo "Successfully updated Runpod template for ${ENGINE}"
+          echo "Response: $BODY" | jq .
+        else
+          echo "Failed to update Runpod template. HTTP $HTTP_CODE"
+          echo "Response: $BODY"
+          exit 1
+        fi
+    secrets:
+      - RUNPOD_API_KEY
+      - RUNPOD_TEMPLATE_KOKORO
+      - RUNPOD_TEMPLATE_COSYVOICE
+      - RUNPOD_TEMPLATE_FISHSPEECH
+      - RUNPOD_TEMPLATE_QWEN3TTS
     when:
       - event: push
         branch: main
