@@ -16,17 +16,13 @@ when:
   - event: manual
 
 steps:
-  # Login to container registry
-  login:
+  # Initial cleanup
+  cleanup:
     image: docker:latest
     commands:
-      - echo "Logging into GitHub Container Registry..."
-      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
       - echo "Cleaning up old Docker artifacts..."
       - docker system prune -f || true
-    secrets:
-      - github_token
-      - github_username
+      - docker builder prune -f || true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -35,6 +31,7 @@ steps:
     image: docker:latest
     commands:
       - echo "=== Building Kokoro ==="
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
       - docker build 
           -t ghcr.io/gbstox/tts-kokoro:latest 
           -t ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
@@ -42,18 +39,21 @@ steps:
       - docker push ghcr.io/gbstox/tts-kokoro:latest
       - docker push ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-kokoro ==="
-      - echo "Cleaning up build artifacts..."
       - docker builder prune -f || true
+    secrets:
+      - github_token
+      - github_username
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - login
+      - cleanup
 
   # Build CosyVoice (after Kokoro)
   build-cosyvoice:
     image: docker:latest
     commands:
       - echo "=== Building CosyVoice ==="
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
       - docker build 
           -t ghcr.io/gbstox/tts-cosyvoice:latest 
           -t ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
@@ -61,8 +61,10 @@ steps:
       - docker push ghcr.io/gbstox/tts-cosyvoice:latest
       - docker push ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-cosyvoice ==="
-      - echo "Cleaning up build artifacts..."
       - docker builder prune -f || true
+    secrets:
+      - github_token
+      - github_username
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -73,6 +75,7 @@ steps:
     image: docker:latest
     commands:
       - echo "=== Building Fish Speech ==="
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
       - docker build 
           -t ghcr.io/gbstox/tts-fishspeech:latest 
           -t ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
@@ -80,8 +83,10 @@ steps:
       - docker push ghcr.io/gbstox/tts-fishspeech:latest
       - docker push ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-fishspeech ==="
-      - echo "Cleaning up build artifacts..."
       - docker builder prune -f || true
+    secrets:
+      - github_token
+      - github_username
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
