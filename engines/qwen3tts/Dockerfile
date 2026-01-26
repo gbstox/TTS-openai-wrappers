@@ -19,6 +19,8 @@ RUN apt-get update -y --fix-missing && \
         python3.11-venv \
         python3-pip \
         ffmpeg \
+        sox \
+        libsox-fmt-all \
         git \
         git-lfs \
         curl \
