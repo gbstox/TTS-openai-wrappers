@@ -1,7 +1,7 @@
 # Woodpecker CI - Build All TTS Engines (Sequential)
 #
 # Builds engines one at a time to reduce disk usage.
-# Each step has explicit timeout to prevent premature termination.
+# Skips engines that already exist in the registry.
 #
 # Required Secrets (set in Woodpecker UI):
 #   - github_token: GitHub PAT with packages:write
@@ -13,7 +13,7 @@ when:
   - event: manual
 
 steps:
-  # Initial cleanup - remove ALL Docker artifacts
+  # Initial cleanup
   cleanup:
     image: docker:latest
     commands:
@@ -24,22 +24,23 @@ steps:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # Build Kokoro (smallest, build first)
+  # Build Kokoro (skip if exists)
   build-kokoro:
     image: docker:latest
     commands:
-      - echo "=== Building Kokoro ==="
+      - echo "=== Checking Kokoro ==="
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
-      - docker build 
-          -t ghcr.io/gbstox/tts-kokoro:latest 
-          -t ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
-          -f engines/kokoro/Dockerfile .
-      - docker push ghcr.io/gbstox/tts-kokoro:latest
-      - docker push ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
-      - echo "=== Pushed tts-kokoro ==="
-      - docker rmi ghcr.io/gbstox/tts-kokoro:latest ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7} || true
+      - |
+        if docker manifest inspect ghcr.io/gbstox/tts-kokoro:latest > /dev/null 2>&1; then
+          echo "=== Kokoro already exists, skipping ==="
+        else
+          echo "=== Building Kokoro ==="
+          docker build -t ghcr.io/gbstox/tts-kokoro:latest -f engines/kokoro/Dockerfile .
+          docker push ghcr.io/gbstox/tts-kokoro:latest
+          echo "=== Pushed tts-kokoro ==="
+          docker rmi ghcr.io/gbstox/tts-kokoro:latest || true
+        fi
       - docker builder prune -af || true
-      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -48,22 +49,23 @@ steps:
     depends_on:
       - cleanup
 
-  # Build CosyVoice (after Kokoro)
+  # Build CosyVoice (skip if exists)
   build-cosyvoice:
     image: docker:latest
     commands:
-      - echo "=== Building CosyVoice ==="
+      - echo "=== Checking CosyVoice ==="
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
-      - docker build 
-          -t ghcr.io/gbstox/tts-cosyvoice:latest 
-          -t ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
-          -f engines/cosyvoice/Dockerfile .
-      - docker push ghcr.io/gbstox/tts-cosyvoice:latest
-      - docker push ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
-      - echo "=== Pushed tts-cosyvoice ==="
-      - docker rmi ghcr.io/gbstox/tts-cosyvoice:latest ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7} || true
+      - |
+        if docker manifest inspect ghcr.io/gbstox/tts-cosyvoice:latest > /dev/null 2>&1; then
+          echo "=== CosyVoice already exists, skipping ==="
+        else
+          echo "=== Building CosyVoice ==="
+          docker build -t ghcr.io/gbstox/tts-cosyvoice:latest -f engines/cosyvoice/Dockerfile .
+          docker push ghcr.io/gbstox/tts-cosyvoice:latest
+          echo "=== Pushed tts-cosyvoice ==="
+          docker rmi ghcr.io/gbstox/tts-cosyvoice:latest || true
+        fi
       - docker builder prune -af || true
-      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -72,22 +74,23 @@ steps:
     depends_on:
       - build-kokoro
 
-  # Build Fish Speech (after CosyVoice)
+  # Build Fish Speech (skip if exists)
   build-fishspeech:
     image: docker:latest
     commands:
-      - echo "=== Building Fish Speech ==="
+      - echo "=== Checking Fish Speech ==="
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
-      - docker build 
-          -t ghcr.io/gbstox/tts-fishspeech:latest 
-          -t ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
-          -f engines/fishspeech/Dockerfile .
-      - docker push ghcr.io/gbstox/tts-fishspeech:latest
-      - docker push ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
-      - echo "=== Pushed tts-fishspeech ==="
-      - docker rmi ghcr.io/gbstox/tts-fishspeech:latest ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7} || true
+      - |
+        if docker manifest inspect ghcr.io/gbstox/tts-fishspeech:latest > /dev/null 2>&1; then
+          echo "=== Fish Speech already exists, skipping ==="
+        else
+          echo "=== Building Fish Speech ==="
+          docker build -t ghcr.io/gbstox/tts-fishspeech:latest -f engines/fishspeech/Dockerfile .
+          docker push ghcr.io/gbstox/tts-fishspeech:latest
+          echo "=== Pushed tts-fishspeech ==="
+          docker rmi ghcr.io/gbstox/tts-fishspeech:latest || true
+        fi
       - docker builder prune -af || true
-      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -96,25 +99,25 @@ steps:
     depends_on:
       - build-cosyvoice
 
-  # Build Qwen3-TTS (after Fish Speech)
+  # Build Qwen3-TTS (skip if exists)
   build-qwen3tts:
     image: docker:latest
     commands:
-      - echo "=== Building Qwen3-TTS ==="
-      - df -h / || true
+      - echo "=== Checking Qwen3-TTS ==="
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
-      - docker build 
-          -t ghcr.io/gbstox/tts-qwen3tts:latest 
-          -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
-          -f engines/qwen3tts/Dockerfile .
-      - echo "=== Build complete, starting push of :latest ==="
-      - docker push ghcr.io/gbstox/tts-qwen3tts:latest
-      - echo "=== Pushed :latest, now pushing commit tag ==="
-      - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
-      - echo "=== Pushed tts-qwen3tts ==="
-      - docker rmi ghcr.io/gbstox/tts-qwen3tts:latest ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7} || true
+      - |
+        if docker manifest inspect ghcr.io/gbstox/tts-qwen3tts:latest > /dev/null 2>&1; then
+          echo "=== Qwen3-TTS already exists, skipping ==="
+        else
+          echo "=== Building Qwen3-TTS ==="
+          df -h / || true
+          docker build -t ghcr.io/gbstox/tts-qwen3tts:latest -f engines/qwen3tts/Dockerfile .
+          echo "=== Build complete, pushing... ==="
+          docker push ghcr.io/gbstox/tts-qwen3tts:latest
+          echo "=== Pushed tts-qwen3tts ==="
+          docker rmi ghcr.io/gbstox/tts-qwen3tts:latest || true
+        fi
       - docker builder prune -af || true
-      - df -h / || true
     secrets:
       - github_token
       - github_username
@@ -128,7 +131,7 @@ steps:
     image: alpine
     commands:
       - echo "=== Build Complete ==="
-      - echo "Images pushed to ghcr.io/gbstox/:"
+      - echo "Images in ghcr.io/gbstox/:"
       - echo "  - tts-kokoro:latest"
       - echo "  - tts-cosyvoice:latest"
       - echo "  - tts-fishspeech:latest"
