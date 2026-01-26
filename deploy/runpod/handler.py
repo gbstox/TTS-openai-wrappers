@@ -126,6 +126,7 @@ def handler(job: dict) -> dict:
         voice = job_input.get("voice", engine.DEFAULT_VOICE)
         speed = float(job_input.get("speed", 1.0))
         output_format = job_input.get("response_format", "mp3")
+        instruction = job_input.get("instruction")  # Optional voice instruction
 
         # Validate voice
         if not engine.validate_voice(voice):
@@ -138,6 +139,7 @@ def handler(job: dict) -> dict:
         logger.info(
             f"Synthesizing: {len(text)} chars, voice={voice}, "
             f"speed={speed}, format={output_format}"
+            + (f", instruction={instruction[:50]}..." if instruction else "")
         )
 
         # Use the engine's synchronous synthesis method
@@ -161,13 +163,20 @@ def handler(job: dict) -> dict:
             # Generic engine - use async method with event loop
             import asyncio
             
+            # Build kwargs for synthesis
+            synth_kwargs = {
+                "text": text,
+                "voice": voice,
+                "speed": speed,
+                "output_format": output_format,
+            }
+            
+            # Add instruction if provided (for Qwen3-TTS and other advanced engines)
+            if instruction:
+                synth_kwargs["instruction"] = instruction
+            
             async def synth():
-                return await engine.synthesize(
-                    text=text,
-                    voice=voice,
-                    speed=speed,
-                    output_format=output_format,
-                )
+                return await engine.synthesize(**synth_kwargs)
             
             # Run async in sync context
             try:

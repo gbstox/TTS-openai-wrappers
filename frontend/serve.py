@@ -31,12 +31,26 @@ class CORSRequestHandler(Handler):
         self.send_response(200)
         self.end_headers()
 
-with socketserver.TCPServer(("", PORT), CORSRequestHandler) as httpd:
+HOST = "0.0.0.0"  # Bind to all interfaces for LAN access
+
+with socketserver.TCPServer((HOST, PORT), CORSRequestHandler) as httpd:
+    # Get local IP for display
+    import socket
+    local_ip = socket.gethostbyname(socket.gethostname())
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except:
+        pass
+    
     print(f"""
 ╔═══════════════════════════════════════════════════════════╗
 ║                    TTS Studio                             ║
 ╠═══════════════════════════════════════════════════════════╣
-║  Server running at: http://localhost:{PORT}                 ║
+║  Local:   http://localhost:{PORT}                           ║
+║  LAN:     http://{local_ip}:{PORT}                       ║
 ║                                                           ║
 ║  Press Ctrl+C to stop                                     ║
 ╚═══════════════════════════════════════════════════════════╝

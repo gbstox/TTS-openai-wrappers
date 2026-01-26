@@ -268,10 +268,10 @@ async function generateSpeech() {
         const format = elements.format.value;
         const speed = parseFloat(elements.speed.value);
         
-        // Build request payload
-        const speechRequest = {
-            model: 'qwen3tts',
-            input: text,
+        // Build request payload for RunPod handler
+        // The handler expects: { input: { input: "text", voice: "...", ... } }
+        const ttsParams = {
+            input: text,  // The text to synthesize
             voice: voice,
             response_format: format,
             speed: speed,
@@ -279,17 +279,14 @@ async function generateSpeech() {
         
         // Add instruction if voice_design or if instruction provided
         if (voice === 'voice_design') {
-            speechRequest.instruction = elements.voiceDesignPrompt.value || 'A clear and natural voice';
+            ttsParams.instruction = elements.voiceDesignPrompt.value || 'A clear and natural voice';
         } else if (elements.instruction.value.trim()) {
-            speechRequest.instruction = elements.instruction.value.trim();
+            ttsParams.instruction = elements.instruction.value.trim();
         }
         
         // RunPod request wrapper
         const runpodRequest = {
-            input: {
-                openai_route: '/v1/audio/speech',
-                openai_input: speechRequest
-            }
+            input: ttsParams
         };
         
         console.log('Sending request:', runpodRequest);
@@ -312,21 +309,27 @@ async function generateSpeech() {
         console.log('Response:', result);
         
         // Handle RunPod response
+        // RunPod wraps the handler response in { output: {...} } or { status: "FAILED", error: "..." }
         if (result.status === 'FAILED') {
             throw new Error(result.error || 'Generation failed');
         }
         
+        // Check for error in output
+        const output = result.output || result;
+        if (output.error) {
+            throw new Error(output.error);
+        }
+        
         // Extract audio data from RunPod response
+        // Handler returns: { audio: "base64...", format: "mp3", voice: "...", duration_estimate: ... }
         let audioData;
-        if (result.output && result.output.audio) {
-            // Direct audio output
-            audioData = result.output.audio;
-        } else if (result.output && typeof result.output === 'string') {
+        if (output.audio) {
+            audioData = output.audio;
+        } else if (typeof output === 'string') {
             // Base64 string directly
-            audioData = result.output;
-        } else if (result.audio) {
-            audioData = result.audio;
+            audioData = output;
         } else {
+            console.error('Unexpected response format:', result);
             throw new Error('No audio data in response');
         }
         
