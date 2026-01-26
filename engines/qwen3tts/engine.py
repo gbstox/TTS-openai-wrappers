@@ -136,14 +136,19 @@ class Qwen3TTSEngine(BaseTTSEngine):
             # Determine dtype and attention implementation
             if self._device == "cuda":
                 dtype = torch.bfloat16
-                # Try flash attention if available
+                # Check if flash attention is available
                 try:
+                    import flash_attn
                     attn_impl = "flash_attention_2"
-                except:
-                    attn_impl = "eager"
+                    logger.info("Using flash_attention_2")
+                except ImportError:
+                    # Fall back to SDPA (scaled dot product attention) or eager
+                    attn_impl = "sdpa"
+                    logger.info("flash-attn not available, using sdpa")
             else:
                 dtype = torch.float32
                 attn_impl = "eager"
+                logger.info("CPU mode, using eager attention")
 
             self._model = Qwen3TTSModel.from_pretrained(
                 repo_id,
