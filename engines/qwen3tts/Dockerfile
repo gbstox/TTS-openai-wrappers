@@ -48,6 +48,11 @@ RUN pip install --no-cache-dir \
     "torchaudio>=2.1.0" \
     --index-url https://download.pytorch.org/whl/cu121
 
+# Install flash-attention for faster inference (requires CUDA)
+# Using pre-built wheels to avoid long compilation times
+RUN pip install --no-cache-dir packaging ninja && \
+    pip install --no-cache-dir flash-attn --no-build-isolation
+
 # Copy and install engine requirements
 WORKDIR /app
 COPY engines/qwen3tts/requirements.txt /app/engines/qwen3tts/requirements.txt
