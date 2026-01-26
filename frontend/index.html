@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS Studio - Text to Speech</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                    TTS Studio
+                </h1>
+                <nav class="nav">
+                    <button class="nav-btn active" data-engine="qwen3tts">Qwen3-TTS</button>
+                    <button class="nav-btn" data-engine="kokoro" disabled title="Coming soon">Kokoro</button>
+                    <button class="nav-btn" data-engine="fishspeech" disabled title="Coming soon">Fish Speech</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Settings Panel -->
+            <aside class="settings-panel">
+                <div class="panel-section">
+                    <h2 class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        Endpoint Settings
+                    </h2>
+                    
+                    <div class="form-group">
+                        <label for="endpoint-url">RunPod Endpoint URL</label>
+                        <input type="url" id="endpoint-url" placeholder="https://api.runpod.ai/v2/your-endpoint-id/runsync">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="api-key">API Key</label>
+                        <div class="input-with-icon">
+                            <input type="password" id="api-key" placeholder="Your RunPod API key">
+                            <button class="icon-btn" id="toggle-key" title="Show/Hide">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-secondary btn-sm" id="test-connection">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                        Test Connection
+                    </button>
+                    <div id="connection-status" class="status-badge hidden"></div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        Voice Selection
+                    </h2>
+                    
+                    <div class="form-group">
+                        <label for="voice-select">Voice</label>
+                        <select id="voice-select">
+                            <optgroup label="Chinese">
+                                <option value="Chelsie" data-lang="zh-CN" data-gender="female">Chelsie - Female, Mandarin</option>
+                                <option value="Ethan" data-lang="zh-CN" data-gender="male">Ethan - Male, Mandarin</option>
+                            </optgroup>
+                            <optgroup label="English">
+                                <option value="Aura" data-lang="en-US" data-gender="female">Aura - Female, Warm</option>
+                                <option value="Serena" data-lang="en-US" data-gender="female" selected>Serena - Female, Professional</option>
+                                <option value="Luca" data-lang="en-US" data-gender="male">Luca - Male, Friendly</option>
+                                <option value="Aiden" data-lang="en-US" data-gender="male">Aiden - Male, Confident</option>
+                            </optgroup>
+                            <optgroup label="Japanese">
+                                <option value="Sakura" data-lang="ja-JP" data-gender="female">Sakura - Female, Gentle</option>
+                            </optgroup>
+                            <optgroup label="Korean">
+                                <option value="Jiyeon" data-lang="ko-KR" data-gender="female">Jiyeon - Female, Melodic</option>
+                            </optgroup>
+                            <optgroup label="Multilingual">
+                                <option value="Nova" data-lang="mul" data-gender="female">Nova - Female, Versatile</option>
+                            </optgroup>
+                            <optgroup label="Custom">
+                                <option value="voice_design" data-lang="mul" data-gender="neutral">Voice Design - Custom Voice</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    
+                    <div class="voice-info" id="voice-info">
+                        <div class="voice-badge female">Female</div>
+                        <div class="voice-badge lang">English</div>
+                    </div>
+                </div>
+
+                <div class="panel-section" id="voice-design-section" style="display: none;">
+                    <h2 class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                        </svg>
+                        Voice Design
+                    </h2>
+                    <p class="section-desc">Describe your ideal voice characteristics</p>
+                    
+                    <div class="form-group">
+                        <label for="voice-design-prompt">Voice Description</label>
+                        <textarea id="voice-design-prompt" rows="3" placeholder="e.g., A warm elderly male voice with wisdom and patience, speaking slowly and calmly"></textarea>
+                    </div>
+                    
+                    <div class="presets">
+                        <span class="preset-label">Presets:</span>
+                        <button class="preset-btn" data-preset="A clear and professional female voice with moderate speed, suitable for news broadcasting">Professional</button>
+                        <button class="preset-btn" data-preset="A warm and friendly male voice with calm tone, perfect for audiobook narration">Narrator</button>
+                        <button class="preset-btn" data-preset="An energetic young voice with lively intonation, great for entertainment content">Energetic</button>
+                        <button class="preset-btn" data-preset="A calm elderly voice with wisdom and patience, ideal for storytelling">Wise Elder</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polygon points="10 8 16 12 10 16 10 8"/>
+                        </svg>
+                        Voice Control
+                    </h2>
+                    <p class="section-desc">Fine-tune how the voice speaks</p>
+                    
+                    <div class="form-group">
+                        <label for="instruction">Speaking Instruction <span class="optional">(optional)</span></label>
+                        <textarea id="instruction" rows="2" placeholder="e.g., Speak slowly with a warm, friendly tone"></textarea>
+                    </div>
+                    
+                    <div class="instruction-presets">
+                        <button class="preset-btn small" data-instruction="Speak slowly and clearly">Slow & Clear</button>
+                        <button class="preset-btn small" data-instruction="Speak with enthusiasm and energy">Enthusiastic</button>
+                        <button class="preset-btn small" data-instruction="Speak in a calm, soothing manner">Calm</button>
+                        <button class="preset-btn small" data-instruction="Speak with a serious, professional tone">Professional</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="4" y1="21" x2="4" y2="14"/>
+                            <line x1="4" y1="10" x2="4" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="12"/>
+                            <line x1="12" y1="8" x2="12" y2="3"/>
+                            <line x1="20" y1="21" x2="20" y2="16"/>
+                            <line x1="20" y1="12" x2="20" y2="3"/>
+                            <line x1="1" y1="14" x2="7" y2="14"/>
+                            <line x1="9" y1="8" x2="15" y2="8"/>
+                            <line x1="17" y1="16" x2="23" y2="16"/>
+                        </svg>
+                        Audio Settings
+                    </h2>
+                    
+                    <div class="form-group">
+                        <label for="speed">Speed: <span id="speed-value">1.0x</span></label>
+                        <input type="range" id="speed" min="0.25" max="4" step="0.25" value="1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="format">Audio Format</label>
+                        <select id="format">
+                            <option value="mp3" selected>MP3 (Recommended)</option>
+                            <option value="wav">WAV (Lossless)</option>
+                            <option value="opus">Opus (Efficient)</option>
+                            <option value="flac">FLAC (Lossless Compressed)</option>
+                            <option value="aac">AAC</option>
+                        </select>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Panel -->
+            <section class="main-panel">
+                <div class="text-input-container">
+                    <div class="text-header">
+                        <h2>Text to Synthesize</h2>
+                        <div class="char-count">
+                            <span id="char-count">0</span> / 10,000 characters
+                        </div>
+                    </div>
+                    <textarea id="text-input" placeholder="Enter the text you want to convert to speech...
+
+Examples:
+• Hello! Welcome to TTS Studio. This is a demonstration of high-quality text-to-speech synthesis.
+• 你好！欢迎使用TTS工作室。这是高质量文字转语音合成的演示。
+• こんにちは！TTSスタジオへようこそ。"></textarea>
+                    
+                    <div class="text-actions">
+                        <div class="sample-texts">
+                            <span>Samples:</span>
+                            <button class="sample-btn" data-text="Hello! Welcome to TTS Studio. This is a demonstration of high-quality text-to-speech synthesis powered by advanced AI models.">English</button>
+                            <button class="sample-btn" data-text="你好！欢迎使用TTS工作室。这是由先进AI模型驱动的高质量文字转语音合成演示。">中文</button>
+                            <button class="sample-btn" data-text="こんにちは！TTSスタジオへようこそ。これは高度なAIモデルによる高品質なテキスト音声合成のデモンストレーションです。">日本語</button>
+                            <button class="sample-btn" data-text="안녕하세요! TTS 스튜디오에 오신 것을 환영합니다. 고급 AI 모델로 구동되는 고품질 텍스트 음성 합성 시연입니다.">한국어</button>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" id="clear-text">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="generate-section">
+                    <button class="btn btn-primary btn-lg" id="generate-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Generate Speech
+                    </button>
+                    
+                    <div class="loading-indicator hidden" id="loading">
+                        <div class="spinner"></div>
+                        <span>Generating audio...</span>
+                        <span class="loading-time" id="loading-time">0s</span>
+                    </div>
+                </div>
+
+                <div class="audio-player-container hidden" id="audio-container">
+                    <h2>Generated Audio</h2>
+                    
+                    <div class="audio-player">
+                        <audio id="audio-player" controls></audio>
+                        
+                        <div class="audio-actions">
+                            <button class="btn btn-secondary" id="download-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                Download
+                            </button>
+                            <button class="btn btn-secondary" id="regenerate-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                                Regenerate
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="generation-info" id="generation-info"></div>
+                </div>
+
+                <!-- History Section -->
+                <div class="history-section">
+                    <div class="history-header">
+                        <h2>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                            Recent Generations
+                        </h2>
+                        <button class="btn btn-ghost btn-sm" id="clear-history">Clear All</button>
+                    </div>
+                    <div class="history-list" id="history-list">
+                        <p class="empty-state">No generations yet. Create your first one above!</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>TTS Studio - Powered by <a href="https://github.com/QwenLM/Qwen3-TTS" target="_blank">Qwen3-TTS</a> | Running on <a href="https://runpod.io" target="_blank">RunPod</a></p>
+        </footer>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
