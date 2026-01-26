@@ -3,9 +3,6 @@
 # Standalone build for just Qwen3-TTS.
 # Manual trigger to run independently of other engines.
 
-labels:
-  platform: linux/amd64
-
 when:
   - event: manual
 

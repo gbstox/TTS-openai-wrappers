@@ -7,9 +7,6 @@
 #   - github_token: GitHub PAT with packages:write
 #   - github_username: Your GitHub username
 
-labels:
-  platform: linux/amd64
-
 when:
   - event: push
     branch: main
