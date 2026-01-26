@@ -10,6 +10,7 @@
 when:
   - event: push
     branch: main
+  - event: manual
 
 steps:
   # Initial cleanup - remove ALL Docker artifacts
