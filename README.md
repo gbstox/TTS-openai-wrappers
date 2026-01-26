@@ -5,7 +5,7 @@ OpenAI-compatible Text-to-Speech API wrappers for popular open-source TTS models
 ## Features
 
 - **OpenAI API Compatible**: Drop-in replacement for OpenAI's `/v1/audio/speech` endpoint
-- **Multiple Engines**: Kokoro, Fish Speech (OpenAudio S1), with more coming
+- **Multiple Engines**: Kokoro, CosyVoice, Fish Speech, and Qwen3-TTS
 - **Streaming Support**: Real-time audio streaming for low-latency applications
 - **Multi-Language**: Full language support per engine
 - **Flexible Deployment**: RunPod serverless, Modal, Docker, or bare metal
@@ -16,9 +16,9 @@ OpenAI-compatible Text-to-Speech API wrappers for popular open-source TTS models
 | Engine | Languages | Voices | Status |
 |--------|-----------|--------|--------|
 | **Kokoro** | 9 (EN, ES, FR, HI, IT, JA, PT, ZH) | 45+ | ✅ Ready |
+| **CosyVoice** | 5 (ZH, EN, JA, KO, Cantonese) | 6+ | ✅ Ready |
 | **Fish Speech** | 8 (EN, ZH, JA, KO, FR, DE, ES, AR) | 10+ | ✅ Ready |
-| CosyVoice | 5 (ZH, EN, JA, KO, Cantonese) | 6+ | 🚧 Experimental |
-| Dia | - | - | 📋 Planned |
+| **Qwen3-TTS** | 15+ (EN, ZH, JA, KO, FR, DE, ES, etc.) | 100+ | ✅ Ready |
 
 ## Quick Start
 
@@ -92,30 +92,48 @@ Pre-built Docker images are available on GitHub Container Registry:
 
 | Engine | Image | GPU Recommended |
 |--------|-------|-----------------|
-| Kokoro | `ghcr.io/gbstox/tts-kokoro:latest` | RTX 3090+ |
-| Fish Speech | `ghcr.io/gbstox/tts-fishspeech:latest` | RTX 3090+ (24GB VRAM) |
+| Kokoro | `ghcr.io/gbstox/tts-kokoro:latest` | RTX 3090+ (16GB VRAM) |
+| CosyVoice | `ghcr.io/gbstox/tts-cosyvoice:latest` | RTX 3090+ (24GB VRAM) |
+| Fish Speech | `ghcr.io/gbstox/tts-fishspeech:latest` | RTX 3090+ (16GB VRAM) |
+| Qwen3-TTS | `ghcr.io/gbstox/tts-qwen3tts:latest` | RTX 3090+ (24GB VRAM) |
 
-### Creating a RunPod Endpoint
+### Live Endpoints
+
+| Engine | Endpoint ID | API URL |
+|--------|-------------|---------|
+| Kokoro | `wqduldfx9dcrrf` | `https://api.runpod.ai/v2/wqduldfx9dcrrf/runsync` |
+| CosyVoice | `6068tes6mdg8dx` | `https://api.runpod.ai/v2/6068tes6mdg8dx/runsync` |
+| Fish Speech | `ops7l6ehhqx0m1` | `https://api.runpod.ai/v2/ops7l6ehhqx0m1/runsync` |
+| Qwen3-TTS | `l7ki046dn0hw7g` | `https://api.runpod.ai/v2/l7ki046dn0hw7g/runsync` |
+
+### Example RunPod Request
+
+```bash
+curl -X POST "https://api.runpod.ai/v2/l7ki046dn0hw7g/runsync" \
+  -H "Authorization: Bearer YOUR_RUNPOD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "input": "Hello from Qwen3-TTS!",
+      "voice": "Chelsie",
+      "response_format": "mp3"
+    }
+  }'
+```
+
+### Creating Your Own RunPod Endpoint
 
 1. **Create a Template** on [RunPod Console](https://www.runpod.io/console/serverless):
    - Container Image: `ghcr.io/gbstox/tts-kokoro:latest`
-   - Container Disk: 20 GB (Kokoro) or 30 GB (Fish Speech)
+   - Container Disk: 20 GB (Kokoro) or 30 GB (others)
    - Environment Variables:
-     - `TTS_ENGINE`: `kokoro` or `fishspeech`
-     - `HF_TOKEN`: Your HuggingFace token (required for Fish Speech)
+     - `TTS_ENGINE`: `kokoro`, `cosyvoice`, `fishspeech`, or `qwen3tts`
+     - `HF_TOKEN`: Your HuggingFace token (required for some models)
 
 2. **Create an Endpoint** using the template:
    - GPU: `AMPERE_24` (RTX 3090/4090) or `AMPERE_48` (A6000/A40)
    - Workers: Min 0, Max 3
    - Idle Timeout: 5 seconds
-
-3. **Test the endpoint**:
-   ```bash
-   curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
-     -H "Authorization: Bearer YOUR_RUNPOD_API_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"input": {"input": "Hello world!", "voice": "af_heart", "response_format": "mp3"}}'
-   ```
 
 See [deploy/runpod/README.md](deploy/runpod/README.md) for detailed instructions.
 
@@ -156,7 +174,7 @@ Copy `.env.example` to `.env` and configure:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TTS_ENGINE` | `kokoro` | Engine: `kokoro`, `fishspeech`, `cosyvoice` |
+| `TTS_ENGINE` | `kokoro` | Engine: `kokoro`, `cosyvoice`, `fishspeech`, `qwen3tts` |
 | `TTS_API_KEY` | `""` | API key for authentication (empty = no auth) |
 | `TTS_PRELOAD_VOICES` | `none` | `all`, `none`, or comma-separated voice IDs |
 | `TTS_MAX_TEXT_LENGTH` | `10000` | Maximum input text length |
@@ -167,7 +185,7 @@ Copy `.env.example` to `.env` and configure:
 
 ### RunPod Serverless
 
-Push to `main` branch → GitHub Actions builds and pushes images to GHCR → Create RunPod endpoint using the image.
+Push to `main` branch → Woodpecker CI builds and pushes images to GHCR → Create RunPod endpoint using the image.
 
 ### Local Docker
 
@@ -213,6 +231,14 @@ TTS_ENGINE=kokoro uvicorn api.app:app --reload
 - **Portuguese**: `pf_dora`, `pm_alex`, `pm_santa`
 - **Chinese**: `zf_xiaobei`, `zf_xiaoni`, `zf_xiaoxiao`, `zf_xiaoyi`, `zm_yunjian`, `zm_yunxi`, `zm_yunxia`, `zm_yunyang`
 
+### CosyVoice
+
+- **Chinese**: `中文女`, `中文男`
+- **English**: `英文女`, `英文男`
+- **Japanese**: `日文女`
+- **Korean**: `韩文女`
+- **Cantonese**: `粤语女`
+
 ### Fish Speech (OpenAudio S1-mini)
 
 - **English**: `英文女` (Female), `英文男` (Male)
@@ -221,6 +247,20 @@ TTS_ENGINE=kokoro uvicorn api.app:app --reload
 - **Korean**: `韩文女` (Female), `韩文男` (Male)
 - **French**: `法语女` (Female)
 - **German**: `德语女` (Female)
+
+### Qwen3-TTS
+
+100+ voices with multilingual support. Some popular voices:
+
+- **English**: `Chelsie`, `Ethan`, `Aiden`, `Aria`, `Luna`, `Stella`
+- **Chinese**: `晓晓`, `云扬`, `晓辰`, `晓涵`
+- **Japanese**: `Nanami`, `Keita`
+- **Korean**: `SunHi`, `InJoon`
+- **French**: `Denise`, `Henri`
+- **German**: `Amala`, `Conrad`
+- **Spanish**: `Elvira`, `Alvaro`
+
+Use `GET /v1/voices` to list all available voices for the current engine.
 
 ## Adding a New Engine
 
@@ -255,7 +295,7 @@ TTS_ENGINE=kokoro uvicorn api.app:app --reload
            ...
    ```
 
-3. Add to GitHub Actions matrix in `.github/workflows/build-push.yml`
+3. Add to Woodpecker CI pipeline in `.woodpecker/build-all.yml`
 
 4. Push — the CI/CD pipeline handles the rest!
 
@@ -267,8 +307,9 @@ TTS-openai-wrappers/
 │   ├── base.py              # Abstract base class
 │   ├── registry.py          # Engine discovery
 │   ├── kokoro/              # Kokoro engine
+│   ├── cosyvoice/           # CosyVoice engine
 │   ├── fishspeech/          # Fish Speech engine
-│   └── cosyvoice/           # CosyVoice engine
+│   └── qwen3tts/            # Qwen3-TTS engine
 ├── api/                     # FastAPI application
 │   ├── app.py              # App factory
 │   ├── routes.py           # API endpoints
@@ -277,10 +318,13 @@ TTS-openai-wrappers/
 │   └── settings.py         # Pydantic settings
 ├── deploy/                  # Deployment configs
 │   ├── runpod/             # RunPod serverless
-│   ├── modal/              # Modal (planned)
+│   ├── modal/              # Modal
 │   └── local/              # Docker Compose
+├── scripts/                # Utility scripts
+│   └── deploy_runpod.py   # RunPod deployment script
+├── .woodpecker/            # Woodpecker CI pipelines
 ├── .env.example            # Environment template
-└── .github/workflows/       # CI/CD
+└── README.md               # This file
 ```
 
 ## License
@@ -290,7 +334,7 @@ Apache 2.0 — see individual engine directories for their respective licenses.
 ## Acknowledgements
 
 - [Kokoro](https://github.com/hexgrad/kokoro) by hexgrad
-- [Fish Speech](https://github.com/fishaudio/fish-speech) by FishAudio
 - [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) by FunAudioLLM
+- [Fish Speech](https://github.com/fishaudio/fish-speech) by FishAudio
+- [Qwen2.5-Omni](https://github.com/QwenLM/Qwen2.5-Omni) by Qwen Team
 - [OpenAI](https://platform.openai.com/docs/api-reference/audio/createSpeech) for the API specification
-
