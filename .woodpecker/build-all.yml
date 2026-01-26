@@ -102,7 +102,7 @@ steps:
     depends_on:
       - build-cosyvoice
 
-  # Build Qwen3-TTS (after Fish Speech)
+  # Build Qwen3-TTS (after Fish Speech) - with push and build as separate commands
   build-qwen3tts:
     image: docker:latest
     commands:
@@ -112,7 +112,9 @@ steps:
           -t ghcr.io/gbstox/tts-qwen3tts:latest 
           -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
           -f engines/qwen3tts/Dockerfile .
+      - echo "=== Build done, pushing :latest ==="
       - docker push ghcr.io/gbstox/tts-qwen3tts:latest
+      - echo "=== Pushed :latest, pushing commit tag ==="
       - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-qwen3tts ==="
       - echo "Cleaning up Qwen3-TTS image and cache..."
