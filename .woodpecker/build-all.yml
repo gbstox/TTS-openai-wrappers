@@ -99,18 +99,19 @@ steps:
         depends_on:
             - build-cosyvoice
 
-    # Build Qwen3-TTS (always rebuild - fixing dependencies)
+    # Build Qwen3-TTS (always rebuild - v3 with qwen-tts package)
     build-qwen3tts:
         image: docker:latest
         commands:
-            - echo "=== Building Qwen3-TTS ==="
+            - echo "=== Building Qwen3-TTS v3 ==="
             - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
             - df -h / || true
-            - docker build -t ghcr.io/gbstox/tts-qwen3tts:latest -f engines/qwen3tts/Dockerfile .
+            - docker build -t ghcr.io/gbstox/tts-qwen3tts:v3 -t ghcr.io/gbstox/tts-qwen3tts:latest -f engines/qwen3tts/Dockerfile .
             - echo "=== Build complete, pushing... ==="
+            - docker push ghcr.io/gbstox/tts-qwen3tts:v3
             - docker push ghcr.io/gbstox/tts-qwen3tts:latest
-            - echo "=== Pushed tts-qwen3tts ==="
-            - docker rmi ghcr.io/gbstox/tts-qwen3tts:latest || true
+            - echo "=== Pushed tts-qwen3tts:v3 and :latest ==="
+            - docker rmi ghcr.io/gbstox/tts-qwen3tts:v3 ghcr.io/gbstox/tts-qwen3tts:latest || true
             - docker builder prune -af || true
         secrets:
             - github_token
