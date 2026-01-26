@@ -127,6 +127,7 @@ def handler(job: dict) -> dict:
         speed = float(job_input.get("speed", 1.0))
         output_format = job_input.get("response_format", "mp3")
         instruction = job_input.get("instruction")  # Optional voice instruction
+        model = job_input.get("model")  # Optional model variant (for qwen3tts)
 
         # Validate voice
         if not engine.validate_voice(voice):
@@ -174,6 +175,10 @@ def handler(job: dict) -> dict:
             # Add instruction if provided (for Qwen3-TTS and other advanced engines)
             if instruction:
                 synth_kwargs["instruction"] = instruction
+            
+            # Add model variant if provided (for Qwen3-TTS model switching)
+            if model:
+                synth_kwargs["model"] = model
             
             async def synth():
                 return await engine.synthesize(**synth_kwargs)

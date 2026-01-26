@@ -7,6 +7,7 @@
 const state = {
     endpointUrl: localStorage.getItem('tts_endpoint_url') || '',
     apiKey: localStorage.getItem('tts_api_key') || '',
+    model: localStorage.getItem('tts_model') || '1.7b-customvoice',
     currentAudioBlob: null,
     currentAudioUrl: null,
     isGenerating: false,
@@ -22,6 +23,9 @@ const elements = {
     toggleKey: document.getElementById('toggle-key'),
     testConnection: document.getElementById('test-connection'),
     connectionStatus: document.getElementById('connection-status'),
+    
+    modelSelect: document.getElementById('model-select'),
+    modelDesc: document.getElementById('model-desc'),
     
     voiceSelect: document.getElementById('voice-select'),
     voiceInfo: document.getElementById('voice-info'),
@@ -58,11 +62,13 @@ function init() {
     // Load saved settings
     elements.endpointUrl.value = state.endpointUrl;
     elements.apiKey.value = state.apiKey;
+    elements.modelSelect.value = state.model;
     
     // Event listeners
     setupEventListeners();
     
     // Update UI
+    updateModelInfo();
     updateVoiceInfo();
     updateCharCount();
     renderHistory();
@@ -90,6 +96,14 @@ function setupEventListeners() {
     });
     
     elements.testConnection.addEventListener('click', testConnection);
+    
+    // Model selection
+    elements.modelSelect.addEventListener('change', () => {
+        state.model = elements.modelSelect.value;
+        localStorage.setItem('tts_model', state.model);
+        updateModelInfo();
+        toggleVoiceDesignSection();
+    });
     
     // Voice selection
     elements.voiceSelect.addEventListener('change', () => {
@@ -142,6 +156,15 @@ function setupEventListeners() {
     elements.clearHistory.addEventListener('click', clearHistory);
 }
 
+function updateModelInfo() {
+    const modelDescriptions = {
+        '1.7b-customvoice': 'Best quality model with instruction control for 9 premium voices.',
+        '0.6b-customvoice': 'Faster, lighter model. Same voices, quicker generation.',
+        '1.7b-voicedesign': 'Create custom voices from text descriptions. Use "Voice Design" voice option.',
+    };
+    elements.modelDesc.textContent = modelDescriptions[state.model] || '';
+}
+
 function updateVoiceInfo() {
     const selected = elements.voiceSelect.selectedOptions[0];
     const gender = selected.dataset.gender;
@@ -166,7 +189,16 @@ function updateVoiceInfo() {
 
 function toggleVoiceDesignSection() {
     const isVoiceDesign = elements.voiceSelect.value === 'voice_design';
-    elements.voiceDesignSection.style.display = isVoiceDesign ? 'block' : 'none';
+    const isVoiceDesignModel = state.model === '1.7b-voicedesign';
+    
+    // Show voice design section if voice_design is selected OR using voicedesign model
+    elements.voiceDesignSection.style.display = (isVoiceDesign || isVoiceDesignModel) ? 'block' : 'none';
+    
+    // Auto-select voice_design voice when using voicedesign model
+    if (isVoiceDesignModel && elements.voiceSelect.value !== 'voice_design') {
+        elements.voiceSelect.value = 'voice_design';
+        updateVoiceInfo();
+    }
 }
 
 function updateCharCount() {
@@ -258,6 +290,7 @@ async function generateSpeech() {
         voice: voice,
         response_format: format,
         speed: speed,
+        model: state.model,
     };
     
     if (voice === 'voice_design') {
@@ -275,6 +308,7 @@ async function generateSpeech() {
         fullText: text,
         voice: voice,
         voiceName: voiceName,
+        model: state.model,
         format: format,
         speed: speed,
         instruction: ttsParams.instruction || null,

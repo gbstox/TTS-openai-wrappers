@@ -291,7 +291,7 @@ class Qwen3TTSEngine(BaseTTSEngine):
             voice: Voice ID.
             speed: Speech speed (0.25 to 4.0).
             output_format: Output audio format.
-            **kwargs: Additional arguments (instruction, etc.)
+            **kwargs: Additional arguments (instruction, model, etc.)
 
         Returns:
             Audio bytes in the requested format.
@@ -306,8 +306,11 @@ class Qwen3TTSEngine(BaseTTSEngine):
                 f"Supported: {self.SUPPORTED_FORMATS}"
             )
 
+        # Get model variant from kwargs (allows dynamic model switching)
+        model_variant = kwargs.get("model")
+
         async with self._lock:
-            model = self._load_model()
+            model = self._load_model(model_variant)
 
             # Get speaker and language
             speaker = self._get_speaker_name(voice)

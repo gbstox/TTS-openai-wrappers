@@ -74,6 +74,34 @@
                 <div class="panel-section">
                     <h2 class="section-title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+                            <rect x="9" y="9" width="6" height="6"/>
+                            <line x1="9" y1="1" x2="9" y2="4"/>
+                            <line x1="15" y1="1" x2="15" y2="4"/>
+                            <line x1="9" y1="20" x2="9" y2="23"/>
+                            <line x1="15" y1="20" x2="15" y2="23"/>
+                            <line x1="20" y1="9" x2="23" y2="9"/>
+                            <line x1="20" y1="14" x2="23" y2="14"/>
+                            <line x1="1" y1="9" x2="4" y2="9"/>
+                            <line x1="1" y1="14" x2="4" y2="14"/>
+                        </svg>
+                        Model
+                    </h2>
+                    
+                    <div class="form-group">
+                        <label for="model-select">Qwen3-TTS Model</label>
+                        <select id="model-select">
+                            <option value="1.7b-customvoice" selected>1.7B CustomVoice - Best quality, 9 voices</option>
+                            <option value="0.6b-customvoice">0.6B CustomVoice - Faster, lighter</option>
+                            <option value="1.7b-voicedesign">1.7B VoiceDesign - Create custom voices</option>
+                        </select>
+                    </div>
+                    <p class="section-desc" id="model-desc">Best quality model with instruction control for 9 premium voices.</p>
+                </div>
+
+                <div class="panel-section">
+                    <h2 class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                             <circle cx="12" cy="7" r="4"/>
                         </svg>
