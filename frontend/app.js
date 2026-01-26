@@ -310,34 +310,73 @@ async function generateSpeech() {
         const runpodRequest = { input: ttsParams };
         console.log('Sending request:', runpodRequest);
         
-        // Long timeout (15 minutes)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000);
+        // Use async /run endpoint instead of /runsync to avoid 90s timeout
+        const runUrl = state.endpointUrl.replace('/runsync', '/run');
         
-        const response = await fetch(state.endpointUrl, {
+        const response = await fetch(runUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${state.apiKey}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(runpodRequest),
-            signal: controller.signal,
         });
-        
-        clearTimeout(timeoutId);
-        clearInterval(timerInterval);
         
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
         
-        const result = await response.json();
-        console.log('Response:', result);
+        const submitResult = await response.json();
+        console.log('Job submitted:', submitResult);
         
-        if (result.status === 'FAILED') {
-            throw new Error(result.error || 'Generation failed');
+        if (!submitResult.id) {
+            throw new Error('No job ID returned from RunPod');
         }
+        
+        const jobId = submitResult.id;
+        const statusUrl = state.endpointUrl.replace('/runsync', `/status/${jobId}`);
+        
+        // Poll for completion (up to 15 minutes)
+        const maxAttempts = 180; // 15 minutes with 5s intervals
+        let attempts = 0;
+        let result;
+        
+        while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s between polls
+            attempts++;
+            
+            const statusResponse = await fetch(statusUrl, {
+                headers: {
+                    'Authorization': `Bearer ${state.apiKey}`,
+                },
+            });
+            
+            if (!statusResponse.ok) {
+                console.warn('Status check failed, retrying...');
+                continue;
+            }
+            
+            result = await statusResponse.json();
+            console.log(`Poll ${attempts}: status=${result.status}`);
+            
+            if (result.status === 'COMPLETED') {
+                break;
+            } else if (result.status === 'FAILED') {
+                throw new Error(result.error || 'Generation failed on RunPod');
+            } else if (result.status === 'CANCELLED') {
+                throw new Error('Job was cancelled');
+            }
+            // IN_QUEUE or IN_PROGRESS - keep polling
+        }
+        
+        clearInterval(timerInterval);
+        
+        if (!result || result.status !== 'COMPLETED') {
+            throw new Error('Job timed out after 15 minutes');
+        }
+        
+        console.log('Final result:', result);
         
         const output = result.output || result;
         if (output.error) {
@@ -351,7 +390,7 @@ async function generateSpeech() {
             audioData = output;
         } else {
             console.error('Unexpected response format:', result);
-            throw new Error('No audio data in response');
+            throw new Error('No audio data in response. Full result: ' + JSON.stringify(result).substring(0, 500));
         }
         
         // Convert to blob for playback
