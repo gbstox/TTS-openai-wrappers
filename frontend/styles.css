@@ -735,15 +735,39 @@ input[type="range"]::-moz-range-thumb {
     padding: var(--space-md);
     background: var(--color-bg);
     border-radius: var(--radius-md);
-    transition: background var(--transition-fast);
+    border-left: 3px solid transparent;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .history-item:hover {
     background: var(--color-bg-hover);
 }
 
-.history-item-play {
+.history-item.pending,
+.history-item.processing {
+    border-left-color: var(--color-warning);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.history-item.ready {
+    border-left-color: var(--color-success);
+}
+
+.history-item.error {
+    border-left-color: var(--color-error);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.history-item-status-icon {
     flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.history-item-play {
     width: 36px;
     height: 36px;
     display: flex;
@@ -764,6 +788,73 @@ input[type="range"]::-moz-range-thumb {
 .history-item-play svg {
     width: 16px;
     height: 16px;
+}
+
+.history-item-error-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-error);
+}
+
+.history-item-error-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.spinner-small {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-warning);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Status tags */
+.status-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-tag.pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--color-warning);
+}
+
+.status-tag.processing {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--color-warning);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.status-tag.ready {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--color-success);
+}
+
+.status-tag.error {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--color-error);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.history-item-error {
+    font-size: var(--font-size-xs);
+    color: var(--color-error);
+    margin-top: var(--space-xs);
 }
 
 .history-item-info {

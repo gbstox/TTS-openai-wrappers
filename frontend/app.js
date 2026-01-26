@@ -66,6 +66,9 @@ function init() {
     updateVoiceInfo();
     updateCharCount();
     renderHistory();
+    
+    // Resume any pending requests on page load
+    resumePendingRequests();
 }
 
 function setupEventListeners() {
@@ -143,7 +146,6 @@ function updateVoiceInfo() {
     const gender = selected.dataset.gender;
     const lang = selected.dataset.lang;
     
-    // Get language name from code
     const langNames = {
         'zh-CN': 'Chinese',
         'en-US': 'English',
@@ -182,7 +184,6 @@ async function testConnection() {
     elements.connectionStatus.textContent = 'Testing...';
     
     try {
-        // For RunPod, we'll test by making a health check or a simple request
         const response = await fetch(state.endpointUrl.replace('/runsync', '/health'), {
             method: 'GET',
             headers: {
@@ -198,7 +199,6 @@ async function testConnection() {
             throw new Error(`HTTP ${response.status}`);
         }
     } catch (error) {
-        // Try alternative - just check if the endpoint responds
         try {
             const runpodResponse = await fetch(state.endpointUrl, {
                 method: 'POST',
@@ -207,10 +207,7 @@ async function testConnection() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    input: {
-                        openai_route: '/health',
-                        openai_input: {}
-                    }
+                    input: { input: 'test', voice: 'Serena' }
                 }),
             });
             
@@ -249,47 +246,80 @@ async function generateSpeech() {
         return;
     }
     
-    // Update UI for loading state
+    const voice = elements.voiceSelect.value;
+    const format = elements.format.value;
+    const speed = parseFloat(elements.speed.value);
+    const voiceName = elements.voiceSelect.selectedOptions[0].text;
+    
+    // Build request payload
+    const ttsParams = {
+        input: text,
+        voice: voice,
+        response_format: format,
+        speed: speed,
+    };
+    
+    if (voice === 'voice_design') {
+        ttsParams.instruction = elements.voiceDesignPrompt.value || 'A clear and natural voice';
+    } else if (elements.instruction.value.trim()) {
+        ttsParams.instruction = elements.instruction.value.trim();
+    }
+    
+    // Create pending history item immediately
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const pendingItem = {
+        id: requestId,
+        text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+        fullText: text,
+        voice: voice,
+        voiceName: voiceName,
+        format: format,
+        speed: speed,
+        instruction: ttsParams.instruction || null,
+        timestamp: Date.now(),
+        status: 'pending',
+        elapsedSeconds: 0,
+        audioBase64: null,
+        error: null,
+    };
+    
+    // Add to history immediately
+    state.history.unshift(pendingItem);
+    if (state.history.length > 20) {
+        state.history = state.history.slice(0, 20);
+    }
+    saveHistory();
+    renderHistory();
+    
+    // Update UI
     state.isGenerating = true;
     elements.generateBtn.disabled = true;
     elements.loading.classList.remove('hidden');
     elements.audioContainer.classList.add('hidden');
     
-    // Start loading timer
+    // Start timer
     state.loadingStartTime = Date.now();
     elements.loadingTime.textContent = '0s';
     state.loadingInterval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - state.loadingStartTime) / 1000);
-        elements.loadingTime.textContent = `${elapsed}s`;
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        elements.loadingTime.textContent = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        
+        // Update history item elapsed time
+        updateHistoryItemElapsed(requestId, elapsed);
     }, 1000);
     
+    // Mark as processing
+    updateHistoryItemStatus(requestId, 'processing');
+    
     try {
-        const voice = elements.voiceSelect.value;
-        const format = elements.format.value;
-        const speed = parseFloat(elements.speed.value);
-        
-        // Build request payload for RunPod handler
-        // The handler expects: { input: { input: "text", voice: "...", ... } }
-        const ttsParams = {
-            input: text,  // The text to synthesize
-            voice: voice,
-            response_format: format,
-            speed: speed,
-        };
-        
-        // Add instruction if voice_design or if instruction provided
-        if (voice === 'voice_design') {
-            ttsParams.instruction = elements.voiceDesignPrompt.value || 'A clear and natural voice';
-        } else if (elements.instruction.value.trim()) {
-            ttsParams.instruction = elements.instruction.value.trim();
-        }
-        
-        // RunPod request wrapper
-        const runpodRequest = {
-            input: ttsParams
-        };
-        
+        const runpodRequest = { input: ttsParams };
         console.log('Sending request:', runpodRequest);
+        
+        // Long timeout (15 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000);
         
         const response = await fetch(state.endpointUrl, {
             method: 'POST',
@@ -298,7 +328,10 @@ async function generateSpeech() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(runpodRequest),
+            signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
             const errorText = await response.text();
@@ -308,32 +341,26 @@ async function generateSpeech() {
         const result = await response.json();
         console.log('Response:', result);
         
-        // Handle RunPod response
-        // RunPod wraps the handler response in { output: {...} } or { status: "FAILED", error: "..." }
         if (result.status === 'FAILED') {
             throw new Error(result.error || 'Generation failed');
         }
         
-        // Check for error in output
         const output = result.output || result;
         if (output.error) {
             throw new Error(output.error);
         }
         
-        // Extract audio data from RunPod response
-        // Handler returns: { audio: "base64...", format: "mp3", voice: "...", duration_estimate: ... }
         let audioData;
         if (output.audio) {
             audioData = output.audio;
         } else if (typeof output === 'string') {
-            // Base64 string directly
             audioData = output;
         } else {
             console.error('Unexpected response format:', result);
             throw new Error('No audio data in response');
         }
         
-        // Convert base64 to blob
+        // Convert to blob for playback
         const binaryString = atob(audioData);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
@@ -350,52 +377,89 @@ async function generateSpeech() {
         
         state.currentAudioBlob = new Blob([bytes], { type: mimeTypes[format] || 'audio/mpeg' });
         
-        // Revoke old URL if exists
         if (state.currentAudioUrl) {
             URL.revokeObjectURL(state.currentAudioUrl);
         }
         
         state.currentAudioUrl = URL.createObjectURL(state.currentAudioBlob);
         elements.audioPlayer.src = state.currentAudioUrl;
-        
-        // Show audio container
         elements.audioContainer.classList.remove('hidden');
         
-        // Update generation info
         const elapsed = ((Date.now() - state.loadingStartTime) / 1000).toFixed(1);
         elements.generationInfo.innerHTML = `
-            <strong>Voice:</strong> ${elements.voiceSelect.selectedOptions[0].text} | 
+            <strong>Voice:</strong> ${voiceName} | 
             <strong>Format:</strong> ${format.toUpperCase()} | 
             <strong>Speed:</strong> ${speed}x | 
             <strong>Time:</strong> ${elapsed}s
         `;
         
-        // Add to history
-        addToHistory({
-            text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
-            fullText: text,
-            voice: voice,
-            voiceName: elements.voiceSelect.selectedOptions[0].text,
-            format: format,
-            speed: speed,
-            instruction: speechRequest.instruction || null,
-            timestamp: Date.now(),
-            audioBlob: state.currentAudioBlob,
-        });
+        // Update history item to ready
+        updateHistoryItemComplete(requestId, audioData, parseFloat(elapsed));
         
         showToast('Audio generated successfully!', 'success');
-        
-        // Auto-play
         elements.audioPlayer.play().catch(() => {});
         
     } catch (error) {
         console.error('Generation error:', error);
-        showToast(`Generation failed: ${error.message}`, 'error');
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (15 min)' : error.message;
+        updateHistoryItemStatus(requestId, 'error', errorMsg);
+        showToast(`Generation failed: ${errorMsg}`, 'error');
     } finally {
         state.isGenerating = false;
         elements.generateBtn.disabled = false;
         elements.loading.classList.add('hidden');
         clearInterval(state.loadingInterval);
+    }
+}
+
+function updateHistoryItemStatus(id, status, error = null) {
+    const item = state.history.find(h => h.id === id);
+    if (item) {
+        item.status = status;
+        if (error) item.error = error;
+        saveHistory();
+        renderHistory();
+    }
+}
+
+function updateHistoryItemElapsed(id, seconds) {
+    const item = state.history.find(h => h.id === id);
+    if (item && item.status === 'processing') {
+        item.elapsedSeconds = seconds;
+        // Don't save to localStorage on every tick, just update UI
+        renderHistory();
+    }
+}
+
+function updateHistoryItemComplete(id, audioBase64, elapsedSeconds) {
+    const item = state.history.find(h => h.id === id);
+    if (item) {
+        item.status = 'ready';
+        item.audioBase64 = audioBase64;
+        item.elapsedSeconds = elapsedSeconds;
+        item.error = null;
+        saveHistory();
+        renderHistory();
+    }
+}
+
+function saveHistory() {
+    localStorage.setItem('tts_history', JSON.stringify(state.history));
+}
+
+function resumePendingRequests() {
+    // Mark any old pending/processing items as failed (they won't complete after page reload)
+    let changed = false;
+    state.history.forEach(item => {
+        if (item.status === 'pending' || item.status === 'processing') {
+            item.status = 'error';
+            item.error = 'Request interrupted (page reload)';
+            changed = true;
+        }
+    });
+    if (changed) {
+        saveHistory();
+        renderHistory();
     }
 }
 
@@ -411,54 +475,59 @@ function downloadAudio() {
     showToast('Download started', 'success');
 }
 
-function addToHistory(item) {
-    // Store audio as base64 for persistence
-    const reader = new FileReader();
-    reader.onload = () => {
-        item.audioBase64 = reader.result.split(',')[1];
-        delete item.audioBlob;
-        
-        state.history.unshift(item);
-        
-        // Keep only last 20 items
-        if (state.history.length > 20) {
-            state.history = state.history.slice(0, 20);
-        }
-        
-        localStorage.setItem('tts_history', JSON.stringify(state.history));
-        renderHistory();
-    };
-    reader.readAsDataURL(item.audioBlob);
-}
-
 function renderHistory() {
     if (state.history.length === 0) {
         elements.historyList.innerHTML = '<p class="empty-state">No generations yet. Create your first one above!</p>';
         return;
     }
     
-    elements.historyList.innerHTML = state.history.map((item, index) => `
-        <div class="history-item" data-index="${index}">
-            <button class="history-item-play" onclick="playHistoryItem(${index})">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-            </button>
+    elements.historyList.innerHTML = state.history.map((item, index) => {
+        const statusBadge = getStatusBadge(item);
+        const isPlayable = item.status === 'ready' && item.audioBase64;
+        const isProcessing = item.status === 'pending' || item.status === 'processing';
+        
+        return `
+        <div class="history-item ${item.status}" data-index="${index}">
+            <div class="history-item-status-icon">
+                ${isProcessing ? `
+                    <div class="spinner-small"></div>
+                ` : isPlayable ? `
+                    <button class="history-item-play" onclick="playHistoryItem(${index})">
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                    </button>
+                ` : `
+                    <div class="history-item-error-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="15" y1="9" x2="9" y2="15"/>
+                            <line x1="9" y1="9" x2="15" y2="15"/>
+                        </svg>
+                    </div>
+                `}
+            </div>
             <div class="history-item-info">
                 <div class="history-item-text">${escapeHtml(item.text)}</div>
                 <div class="history-item-meta">
                     <span>${item.voiceName}</span>
-                    <span>${formatTimestamp(item.timestamp)}</span>
+                    <span>${item.format.toUpperCase()}</span>
+                    <span>${item.speed}x</span>
+                    ${statusBadge}
+                    ${item.elapsedSeconds ? `<span>${formatElapsed(item.elapsedSeconds)}</span>` : ''}
                 </div>
+                ${item.error ? `<div class="history-item-error">${escapeHtml(item.error)}</div>` : ''}
             </div>
             <div class="history-item-actions">
-                <button onclick="downloadHistoryItem(${index})" title="Download">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                </button>
+                ${isPlayable ? `
+                    <button onclick="downloadHistoryItem(${index})" title="Download">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                    </button>
+                ` : ''}
                 <button onclick="reuseHistoryItem(${index})" title="Reuse settings">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="23 4 23 10 17 10"/>
@@ -473,7 +542,29 @@ function renderHistory() {
                 </button>
             </div>
         </div>
-    `).join('');
+    `}).join('');
+}
+
+function getStatusBadge(item) {
+    switch (item.status) {
+        case 'pending':
+            return '<span class="status-tag pending">Queued</span>';
+        case 'processing':
+            return '<span class="status-tag processing">Processing...</span>';
+        case 'ready':
+            return '<span class="status-tag ready">Ready</span>';
+        case 'error':
+            return '<span class="status-tag error">Failed</span>';
+        default:
+            return '';
+    }
+}
+
+function formatElapsed(seconds) {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}m ${secs}s`;
 }
 
 // Global functions for history item actions
@@ -535,14 +626,12 @@ window.reuseHistoryItem = function(index) {
     toggleVoiceDesignSection();
     
     showToast('Settings restored from history', 'success');
-    
-    // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 window.deleteHistoryItem = function(index) {
     state.history.splice(index, 1);
-    localStorage.setItem('tts_history', JSON.stringify(state.history));
+    saveHistory();
     renderHistory();
     showToast('Item deleted', 'success');
 };
@@ -551,7 +640,7 @@ function clearHistory() {
     if (!confirm('Are you sure you want to clear all history?')) return;
     
     state.history = [];
-    localStorage.setItem('tts_history', JSON.stringify(state.history));
+    saveHistory();
     renderHistory();
     showToast('History cleared', 'success');
 }
