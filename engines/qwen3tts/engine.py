@@ -3,6 +3,8 @@
 Wraps the Qwen3-TTS models with the BaseTTSEngine interface.
 https://huggingface.co/collections/Qwen/qwen3-tts
 
+Uses the official qwen-tts package for model loading and inference.
+
 Supports three model variants:
 - Qwen3-TTS-12Hz-1.7B-CustomVoice: 9 premium voices with instruction control
 - Qwen3-TTS-12Hz-1.7B-VoiceDesign: Voice design via natural language
@@ -27,6 +29,7 @@ from engines.qwen3tts.voices import (
     DEFAULT_VOICE,
     LANGUAGE_CODES,
     VOICE_DESIGN_ID,
+    VOICE_MAPPING,
 )
 from engines.registry import register_engine
 
@@ -57,10 +60,7 @@ MODEL_VARIANTS = {
     },
 }
 
-TOKENIZER_REPO = "Qwen/Qwen3-TTS-Tokenizer-12Hz"
-
 # Environment variable configuration
-MODEL_DIR = os.environ.get("QWEN3TTS_MODEL_DIR", "/models/qwen3tts")
 DEFAULT_MODEL_VARIANT = os.environ.get("QWEN3TTS_MODEL", "1.7b-customvoice")
 
 
@@ -90,7 +90,6 @@ class Qwen3TTSEngine(BaseTTSEngine):
     def __init__(self):
         """Initialize the Qwen3-TTS engine."""
         self._model = None
-        self._tokenizer = None
         self._lock = asyncio.Lock()
         self._model_variant = DEFAULT_MODEL_VARIANT
         self._device = "cuda" if self._check_cuda() else "cpu"
@@ -108,71 +107,8 @@ class Qwen3TTSEngine(BaseTTSEngine):
         except ImportError:
             return False
 
-    def _download_model_if_needed(self, model_variant: str | None = None):
-        """Download the model from HuggingFace if not present.
-
-        Args:
-            model_variant: Model variant to download. Uses default if None.
-        """
-        variant = model_variant or self._model_variant
-        if variant not in MODEL_VARIANTS:
-            raise ValueError(
-                f"Unknown model variant: {variant}. "
-                f"Available: {list(MODEL_VARIANTS.keys())}"
-            )
-
-        config = MODEL_VARIANTS[variant]
-        model_path = os.path.join(MODEL_DIR, variant)
-
-        # Check if model already exists
-        if os.path.exists(model_path) and os.listdir(model_path):
-            logger.info(f"Model already exists at {model_path}")
-            return model_path
-
-        logger.info(f"Downloading model {config['repo_id']} to {model_path}...")
-
-        try:
-            from huggingface_hub import snapshot_download
-
-            snapshot_download(
-                config["repo_id"],
-                local_dir=model_path,
-                ignore_patterns=["*.md", "*.txt"],
-            )
-            logger.info(f"Model downloaded successfully to {model_path}")
-        except Exception as e:
-            logger.error(f"Failed to download model: {e}")
-            raise
-
-        return model_path
-
-    def _download_tokenizer_if_needed(self):
-        """Download the tokenizer from HuggingFace if not present."""
-        tokenizer_path = os.path.join(MODEL_DIR, "tokenizer")
-
-        if os.path.exists(tokenizer_path) and os.listdir(tokenizer_path):
-            logger.info(f"Tokenizer already exists at {tokenizer_path}")
-            return tokenizer_path
-
-        logger.info(f"Downloading tokenizer {TOKENIZER_REPO} to {tokenizer_path}...")
-
-        try:
-            from huggingface_hub import snapshot_download
-
-            snapshot_download(
-                TOKENIZER_REPO,
-                local_dir=tokenizer_path,
-                ignore_patterns=["*.md", "*.txt"],
-            )
-            logger.info(f"Tokenizer downloaded successfully to {tokenizer_path}")
-        except Exception as e:
-            logger.error(f"Failed to download tokenizer: {e}")
-            raise
-
-        return tokenizer_path
-
     def _load_model(self, model_variant: str | None = None):
-        """Lazily load the Qwen3-TTS model and tokenizer.
+        """Lazily load the Qwen3-TTS model.
 
         Args:
             model_variant: Model variant to load. Uses default if None.
@@ -180,422 +116,297 @@ class Qwen3TTSEngine(BaseTTSEngine):
         variant = model_variant or self._model_variant
 
         if self._model is not None and self._model_variant == variant:
-            return self._model, self._tokenizer
+            return self._model
 
-        # Download if needed
-        model_path = self._download_model_if_needed(variant)
-        tokenizer_path = self._download_tokenizer_if_needed()
+        if variant not in MODEL_VARIANTS:
+            raise ValueError(
+                f"Unknown model variant: {variant}. "
+                f"Available: {list(MODEL_VARIANTS.keys())}"
+            )
 
-        logger.info(f"Loading Qwen3-TTS model from {model_path}")
+        config = MODEL_VARIANTS[variant]
+        repo_id = config["repo_id"]
+
+        logger.info(f"Loading Qwen3-TTS model {repo_id}")
 
         try:
             import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from qwen_tts import Qwen3TTSModel
 
-            # Load tokenizer
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                tokenizer_path,
-                trust_remote_code=True,
-            )
+            # Determine dtype and attention implementation
+            if self._device == "cuda":
+                dtype = torch.bfloat16
+                # Try flash attention if available
+                try:
+                    attn_impl = "flash_attention_2"
+                except:
+                    attn_impl = "eager"
+            else:
+                dtype = torch.float32
+                attn_impl = "eager"
 
-            # Load model
-            self._model = AutoModelForCausalLM.from_pretrained(
-                model_path,
-                torch_dtype=torch.bfloat16 if self._device == "cuda" else torch.float32,
+            self._model = Qwen3TTSModel.from_pretrained(
+                repo_id,
                 device_map=self._device,
-                trust_remote_code=True,
+                dtype=dtype,
+                attn_implementation=attn_impl,
             )
 
             self._model_variant = variant
             logger.info(f"Qwen3-TTS model loaded successfully (variant={variant})")
 
-            return self._model, self._tokenizer
+            return self._model
 
         except ImportError as e:
             raise ImportError(
-                "Qwen3-TTS dependencies not installed. "
-                "Install with: pip install transformers torch torchaudio"
+                "qwen-tts package not installed. "
+                "Install with: pip install qwen-tts"
             ) from e
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
 
-    def _build_prompt(
-        self,
-        text: str,
-        voice: str,
-        instruction: str | None = None,
-    ) -> str:
-        """Build the prompt for TTS generation.
+    def _get_speaker_name(self, voice: str) -> str:
+        """Map voice ID to Qwen3-TTS speaker name.
 
         Args:
-            text: Text to synthesize.
-            voice: Voice ID or voice design description.
-            instruction: Optional instruction for voice control.
+            voice: Voice ID from our voice list.
 
         Returns:
-            Formatted prompt string.
+            Speaker name expected by Qwen3-TTS.
         """
-        config = MODEL_VARIANTS.get(self._model_variant, {})
+        # Qwen3-TTS speaker names
+        speaker_map = {
+            "Chelsie": "Vivian",  # Chinese female
+            "Ethan": "Dylan",     # Chinese male
+            "Aura": "Serena",     # English female
+            "Serena": "Serena",   # English female
+            "Luca": "Ryan",       # English male
+            "Aiden": "Aiden",     # English male
+            "Ryan": "Ryan",       # English male
+            "Vivian": "Vivian",   # Chinese female
+            "Dylan": "Dylan",     # Chinese male
+            "Eric": "Eric",       # Chinese male (Sichuan)
+            "Uncle_Fu": "Uncle_Fu",  # Chinese senior male
+            "Ono_Anna": "Ono_Anna",  # Japanese female
+            "Sohee": "Sohee",     # Korean female
+        }
+        return speaker_map.get(voice, "Vivian")
 
-        # VoiceDesign model: voice parameter is the voice description
-        if config.get("supports_voice_design") and voice == VOICE_DESIGN_ID:
-            if instruction:
-                # Use instruction as voice description
-                voice_desc = instruction
-            else:
-                voice_desc = "A clear and natural voice with moderate speed"
+    def _get_language(self, voice: str) -> str:
+        """Get language for a voice.
 
-            prompt = f"<|voice_design|>{voice_desc}<|text|>{text}"
+        Args:
+            voice: Voice ID.
+
+        Returns:
+            Language string for Qwen3-TTS.
+        """
+        # Find voice info from CUSTOM_VOICES dict
+        if voice in CUSTOM_VOICES:
+            _, _, _, lang_code, _ = CUSTOM_VOICES[voice]
         else:
-            # CustomVoice model: use preset voice with optional instruction
-            if instruction:
-                prompt = f"<|spk|>{voice}<|instruction|>{instruction}<|text|>{text}"
-            else:
-                prompt = f"<|spk|>{voice}<|text|>{text}"
+            lang_code = "en-US"
 
-        return prompt
+        # Map language code to Qwen3-TTS language
+        lang_map = {
+            "zh-CN": "Chinese",
+            "en-US": "English",
+            "en-GB": "English",
+            "ja-JP": "Japanese",
+            "ko-KR": "Korean",
+            "de-DE": "German",
+            "fr-FR": "French",
+            "ru-RU": "Russian",
+            "pt-BR": "Portuguese",
+            "es-ES": "Spanish",
+            "it-IT": "Italian",
+        }
+        return lang_map.get(lang_code, "Auto")
 
     def _convert_audio(
         self,
         audio_data: np.ndarray,
-        output_format: AudioFormat,
+        sample_rate: int,
+        output_format: str,
     ) -> bytes:
-        """Convert audio data to the requested format.
+        """Convert audio to the requested format.
 
         Args:
-            audio_data: NumPy array of audio samples.
-            output_format: Target audio format.
+            audio_data: Audio samples as numpy array.
+            sample_rate: Sample rate of the audio.
+            output_format: Target format (mp3, wav, etc.).
 
         Returns:
             Audio bytes in the requested format.
         """
-        buffer = io.BytesIO()
+        # First write to WAV buffer
+        wav_buffer = io.BytesIO()
+        sf.write(wav_buffer, audio_data, sample_rate, format="WAV")
+        wav_buffer.seek(0)
 
         if output_format == "wav":
-            sf.write(buffer, audio_data, self.SAMPLE_RATE, format="WAV")
-        elif output_format == "pcm":
-            # 16-bit signed PCM, little-endian
-            pcm_data = (audio_data * 32767).astype(np.int16)
-            buffer.write(pcm_data.tobytes())
+            return wav_buffer.getvalue()
+
+        # Convert to other formats using pydub
+        audio_segment = AudioSegment.from_wav(wav_buffer)
+
+        output_buffer = io.BytesIO()
+        format_map = {
+            "mp3": "mp3",
+            "opus": "opus",
+            "flac": "flac",
+            "aac": "adts",  # AAC in ADTS container
+            "pcm": "raw",
+        }
+
+        export_format = format_map.get(output_format, "mp3")
+
+        if export_format == "raw":
+            # PCM: 16-bit signed, little-endian
+            audio_segment = audio_segment.set_sample_width(2)
+            output_buffer.write(audio_segment.raw_data)
         else:
-            # Use pydub for mp3, opus, aac, flac
-            wav_buffer = io.BytesIO()
-            sf.write(wav_buffer, audio_data, self.SAMPLE_RATE, format="WAV")
-            wav_buffer.seek(0)
+            audio_segment.export(output_buffer, format=export_format)
 
-            audio_segment = AudioSegment.from_wav(wav_buffer)
-
-            format_map = {
-                "mp3": "mp3",
-                "opus": "opus",
-                "aac": "adts",
-                "flac": "flac",
-            }
-            buffer = io.BytesIO()
-            audio_segment.export(buffer, format=format_map.get(output_format, "mp3"))
-
-        buffer.seek(0)
-        return buffer.read()
+        return output_buffer.getvalue()
 
     async def synthesize(
         self,
         text: str,
         voice: str | None = None,
         speed: float = 1.0,
-        output_format: AudioFormat = "mp3",
-        instruction: str | None = None,
+        output_format: str | None = None,
+        **kwargs,
     ) -> bytes:
-        """Synthesize text to audio.
+        """Synthesize speech from text.
 
         Args:
             text: Text to synthesize.
-            voice: Voice ID to use. For VoiceDesign model with voice_design ID,
-                   use instruction parameter for voice description.
-            speed: Playback speed (0.25 to 4.0).
+            voice: Voice ID.
+            speed: Speech speed (0.25 to 4.0).
             output_format: Output audio format.
-            instruction: Optional instruction for voice control or voice design.
+            **kwargs: Additional arguments (instruction, etc.)
 
         Returns:
             Audio bytes in the requested format.
         """
         voice = voice or self.DEFAULT_VOICE
+        output_format = output_format or self.DEFAULT_FORMAT
 
-        # Run synthesis in executor to not block the event loop
-        loop = asyncio.get_event_loop()
-        audio_bytes = await loop.run_in_executor(
-            None,
-            self._synthesize_sync,
-            text,
-            voice,
-            speed,
-            output_format,
-            instruction,
-        )
-        return audio_bytes
-
-    def _synthesize_sync(
-        self,
-        text: str,
-        voice: str,
-        speed: float,
-        output_format: AudioFormat,
-        instruction: str | None = None,
-    ) -> bytes:
-        """Synchronous synthesis implementation.
-
-        Args:
-            text: Text to synthesize.
-            voice: Voice ID.
-            speed: Playback speed.
-            output_format: Output format.
-            instruction: Optional instruction for voice control.
-
-        Returns:
-            Audio bytes.
-        """
-        import torch
-
-        model, tokenizer = self._load_model()
-
-        # Build prompt
-        prompt = self._build_prompt(text, voice, instruction)
-        logger.info(f"Synthesizing with Qwen3-TTS: voice={voice}, text={text[:50]}...")
-
-        # Tokenize input
-        inputs = tokenizer(prompt, return_tensors="pt")
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
-
-        # Generate audio codes
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=4096,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
+        # Validate format
+        if output_format not in self.SUPPORTED_FORMATS:
+            raise ValueError(
+                f"Unsupported format: {output_format}. "
+                f"Supported: {self.SUPPORTED_FORMATS}"
             )
 
-        # Decode audio from tokens
-        # The model outputs audio codes that need to be decoded by the tokenizer
-        audio_codes = outputs[0][inputs["input_ids"].shape[1]:]
-        
-        # Decode audio codes to waveform
-        if hasattr(tokenizer, "decode_audio"):
-            audio_array = tokenizer.decode_audio(audio_codes)
-        else:
-            # Fallback: assume the tokenizer has a codec for audio decoding
-            audio_array = self._decode_audio_codes(audio_codes, tokenizer)
+        async with self._lock:
+            model = self._load_model()
 
-        if audio_array is None or len(audio_array) == 0:
-            logger.warning("Empty audio output, returning silence")
-            audio_array = np.zeros(self.SAMPLE_RATE, dtype=np.float32)
+            # Get speaker and language
+            speaker = self._get_speaker_name(voice)
+            language = self._get_language(voice)
 
-        # Ensure audio is in the right format
-        if isinstance(audio_array, torch.Tensor):
-            audio_array = audio_array.cpu().numpy()
+            # Get instruction if provided
+            instruction = kwargs.get("instruction", "")
 
-        # Flatten if needed
-        if audio_array.ndim > 1:
-            audio_array = audio_array.flatten()
+            logger.info(
+                f"Synthesizing: {len(text)} chars, speaker={speaker}, "
+                f"language={language}, format={output_format}"
+            )
 
-        # Normalize to [-1, 1]
-        if audio_array.max() > 1.0 or audio_array.min() < -1.0:
-            max_val = max(abs(audio_array.max()), abs(audio_array.min()))
-            if max_val > 0:
-                audio_array = audio_array / max_val
+            try:
+                # Generate audio using qwen-tts
+                config = MODEL_VARIANTS.get(self._model_variant, {})
 
-        # Apply speed adjustment if needed
-        if speed != 1.0:
-            audio_array = self._apply_speed(audio_array, speed)
+                if config.get("supports_voice_design") and voice == VOICE_DESIGN_ID:
+                    # Voice design mode
+                    wavs, sr = model.generate_voice_design(
+                        text=text,
+                        language=language,
+                        instruct=instruction or "A clear and natural voice",
+                    )
+                else:
+                    # Custom voice mode
+                    if instruction:
+                        wavs, sr = model.generate_custom_voice(
+                            text=text,
+                            language=language,
+                            speaker=speaker,
+                            instruct=instruction,
+                        )
+                    else:
+                        wavs, sr = model.generate_custom_voice(
+                            text=text,
+                            language=language,
+                            speaker=speaker,
+                        )
 
-        return self._convert_audio(audio_array, output_format)
+                # Convert to requested format
+                audio_bytes = self._convert_audio(wavs[0], sr, output_format)
 
-    def _decode_audio_codes(self, audio_codes, tokenizer) -> np.ndarray:
-        """Decode audio codes to waveform using the tokenizer's codec.
+                logger.info(
+                    f"Synthesis complete: {len(audio_bytes)} bytes"
+                )
 
-        Args:
-            audio_codes: Token IDs representing audio codes.
-            tokenizer: The tokenizer with audio codec.
+                return audio_bytes
 
-        Returns:
-            Audio waveform as numpy array.
-        """
-        import torch
-
-        try:
-            # Try using the tokenizer's built-in audio decoding
-            if hasattr(tokenizer, "audio_codec"):
-                with torch.no_grad():
-                    audio = tokenizer.audio_codec.decode(audio_codes.unsqueeze(0))
-                return audio.squeeze().cpu().numpy()
-
-            # Alternative: decode through the tokenizer directly
-            if hasattr(tokenizer, "decode_to_audio"):
-                return tokenizer.decode_to_audio(audio_codes)
-
-            # Fallback: return the codes as audio samples (not ideal)
-            logger.warning("No audio codec found, using raw token values")
-            return audio_codes.float().cpu().numpy() / 32768.0
-
-        except Exception as e:
-            logger.error(f"Audio decoding failed: {e}")
-            return np.zeros(self.SAMPLE_RATE, dtype=np.float32)
-
-    def _apply_speed(self, audio_array: np.ndarray, speed: float) -> np.ndarray:
-        """Apply speed adjustment to audio.
-
-        Args:
-            audio_array: Audio samples.
-            speed: Speed multiplier.
-
-        Returns:
-            Speed-adjusted audio samples.
-        """
-        from scipy import signal
-
-        if speed == 1.0:
-            return audio_array
-
-        # Resample to achieve speed change
-        # Speed up = fewer samples, slow down = more samples
-        new_length = int(len(audio_array) / speed)
-        return signal.resample(audio_array, new_length)
+            except Exception as e:
+                logger.error(f"Synthesis failed: {e}")
+                raise
 
     async def synthesize_stream(
         self,
         text: str,
         voice: str | None = None,
         speed: float = 1.0,
-        output_format: AudioFormat = "mp3",
+        output_format: str | None = None,
+        **kwargs,
     ) -> AsyncGenerator[bytes, None]:
-        """Synthesize text to audio with streaming output.
+        """Stream synthesized speech.
 
-        Yields audio chunks as they are generated.
+        For Qwen3-TTS, we currently fall back to non-streaming synthesis
+        and yield the result in chunks.
 
         Args:
             text: Text to synthesize.
-            voice: Voice ID to use.
-            speed: Playback speed (0.25 to 4.0).
-            output_format: Output audio format.
+            voice: Voice ID.
+            speed: Speech speed.
+            output_format: Output format.
+            **kwargs: Additional arguments.
 
         Yields:
-            Audio chunks as bytes.
+            Audio chunks.
         """
-        voice = voice or self.DEFAULT_VOICE
+        # For now, fall back to non-streaming
+        audio_bytes = await self.synthesize(
+            text=text,
+            voice=voice,
+            speed=speed,
+            output_format=output_format,
+            **kwargs,
+        )
 
-        loop = asyncio.get_event_loop()
-
-        # Create a queue for passing chunks between threads
-        import queue
-
-        audio_queue: queue.Queue = queue.Queue()
-
-        def generate_chunks():
-            """Generate audio chunks in a separate thread."""
-            try:
-                import torch
-
-                model, tokenizer = self._load_model()
-                prompt = self._build_prompt(text, voice)
-
-                inputs = tokenizer(prompt, return_tensors="pt")
-                inputs = {k: v.to(self._device) for k, v in inputs.items()}
-
-                # Use streaming generation
-                streamer_queue = queue.Queue()
-
-                def token_callback(token_ids):
-                    """Callback for each generated token."""
-                    streamer_queue.put(token_ids)
-
-                # Generate with streaming
-                with torch.no_grad():
-                    # For true streaming, we'd need model-specific streaming support
-                    # For now, generate all and split into chunks
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=4096,
-                        do_sample=True,
-                        temperature=0.7,
-                        top_p=0.9,
-                        pad_token_id=tokenizer.pad_token_id,
-                        eos_token_id=tokenizer.eos_token_id,
-                    )
-
-                # Decode full audio
-                audio_codes = outputs[0][inputs["input_ids"].shape[1]:]
-                
-                if hasattr(tokenizer, "decode_audio"):
-                    audio_array = tokenizer.decode_audio(audio_codes)
-                else:
-                    audio_array = self._decode_audio_codes(audio_codes, tokenizer)
-
-                if isinstance(audio_array, torch.Tensor):
-                    audio_array = audio_array.cpu().numpy()
-
-                if audio_array.ndim > 1:
-                    audio_array = audio_array.flatten()
-
-                # Normalize
-                if audio_array.max() > 1.0 or audio_array.min() < -1.0:
-                    max_val = max(abs(audio_array.max()), abs(audio_array.min()))
-                    if max_val > 0:
-                        audio_array = audio_array / max_val
-
-                # Apply speed
-                if speed != 1.0:
-                    audio_array = self._apply_speed(audio_array, speed)
-
-                # Split into chunks for streaming
-                chunk_size = self.SAMPLE_RATE // 4  # 250ms chunks
-                for i in range(0, len(audio_array), chunk_size):
-                    chunk = audio_array[i:i + chunk_size]
-                    chunk_bytes = self._convert_audio(chunk, output_format)
-                    audio_queue.put(chunk_bytes)
-
-                audio_queue.put(None)  # Signal completion
-
-            except Exception as e:
-                logger.exception("Streaming synthesis failed")
-                audio_queue.put(e)
-
-        # Start generation in executor
-        loop.run_in_executor(None, generate_chunks)
-
-        # Yield chunks as they become available
-        while True:
-            try:
-                chunk = await loop.run_in_executor(
-                    None,
-                    lambda: audio_queue.get(timeout=0.1),
-                )
-
-                if chunk is None:
-                    break
-                if isinstance(chunk, Exception):
-                    raise chunk
-                yield chunk
-
-            except queue.Empty:
-                await asyncio.sleep(0.01)
-                continue
+        # Yield in chunks
+        chunk_size = 4096
+        for i in range(0, len(audio_bytes), chunk_size):
+            yield audio_bytes[i : i + chunk_size]
 
     def list_voices(self) -> list[VoiceInfo]:
-        """List all available Qwen3-TTS voices.
+        """List available voices.
 
         Returns:
-            List of VoiceInfo for all available voices.
+            List of voice information.
         """
-        return ALL_VOICES.copy()
+        # ALL_VOICES is already a list of VoiceInfo objects
+        return ALL_VOICES
 
     def list_models(self) -> list[ModelInfo]:
-        """List available Qwen3-TTS models.
+        """List available models.
 
         Returns:
-            List of ModelInfo for all model variants.
+            List of model information.
         """
         models = []
         for variant_id, config in MODEL_VARIANTS.items():
@@ -604,218 +415,28 @@ class Qwen3TTSEngine(BaseTTSEngine):
                     id=f"qwen3tts-{variant_id}",
                     name=config["name"],
                     description=config["description"],
-                    languages=list(LANGUAGE_CODES.values()),
-                    voice_count=len(CUSTOM_VOICES) if config["supports_custom_voice"] else 0,
+                    languages=["zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"],
                 )
             )
         return models
 
-    def preload_voices(self, voices: list[str] | None = None) -> None:
-        """Preload the model.
-
-        Qwen3-TTS uses a single model for all voices, so this just
-        ensures the model is loaded.
+    def validate_voice(self, voice: str) -> bool:
+        """Check if a voice ID is valid.
 
         Args:
-            voices: Ignored - all voices use the same model.
+            voice: Voice ID to validate.
+
+        Returns:
+            True if valid, False otherwise.
         """
-        logger.info(f"Preloading Qwen3-TTS model (variant={self._model_variant})...")
+        return voice in ALL_VOICE_IDS or voice == VOICE_DESIGN_ID
+
+    def preload_voices(self, voices: list[str] | None = None):
+        """Preload voices by loading the model.
+
+        Args:
+            voices: Voices to preload (ignored, model is shared).
+        """
+        logger.info("Preloading Qwen3-TTS model...")
         self._load_model()
         logger.info("Qwen3-TTS model preloaded")
-
-    def set_model_variant(self, variant: str) -> None:
-        """Switch to a different model variant.
-
-        Args:
-            variant: Model variant ID (e.g., '1.7b-customvoice', '1.7b-voicedesign').
-
-        Raises:
-            ValueError: If variant is not recognized.
-        """
-        if variant not in MODEL_VARIANTS:
-            raise ValueError(
-                f"Unknown model variant: {variant}. "
-                f"Available: {list(MODEL_VARIANTS.keys())}"
-            )
-
-        if variant != self._model_variant:
-            logger.info(f"Switching model variant from {self._model_variant} to {variant}")
-            self._model = None
-            self._tokenizer = None
-            self._model_variant = variant
-
-    async def synthesize_with_reference(
-        self,
-        text: str,
-        reference_audio: bytes,
-        speed: float = 1.0,
-        output_format: AudioFormat = "mp3",
-        instruction: str | None = None,
-    ) -> bytes:
-        """Synthesize speech by cloning a voice from reference audio.
-
-        This method enables voice cloning by using reference audio to
-        extract voice characteristics and apply them to the synthesized speech.
-
-        Args:
-            text: Text to synthesize.
-            reference_audio: Raw audio bytes (WAV, MP3, or FLAC format).
-            speed: Playback speed (0.25 to 4.0).
-            output_format: Output audio format.
-            instruction: Optional instruction for voice control.
-
-        Returns:
-            Audio bytes in the requested format.
-        """
-        # Verify we're using a CustomVoice model
-        config = MODEL_VARIANTS.get(self._model_variant, {})
-        if not config.get("supports_custom_voice"):
-            raise ValueError(
-                f"Model variant '{self._model_variant}' does not support voice cloning. "
-                "Use '1.7b-customvoice' or '0.6b-customvoice'."
-            )
-
-        # Run synthesis in executor to not block the event loop
-        loop = asyncio.get_event_loop()
-        audio_bytes = await loop.run_in_executor(
-            None,
-            self._synthesize_with_reference_sync,
-            text,
-            reference_audio,
-            speed,
-            output_format,
-            instruction,
-        )
-        return audio_bytes
-
-    def _synthesize_with_reference_sync(
-        self,
-        text: str,
-        reference_audio: bytes,
-        speed: float,
-        output_format: AudioFormat,
-        instruction: str | None = None,
-    ) -> bytes:
-        """Synchronous voice cloning implementation.
-
-        Args:
-            text: Text to synthesize.
-            reference_audio: Raw audio bytes.
-            speed: Playback speed.
-            output_format: Output format.
-            instruction: Optional instruction for voice control.
-
-        Returns:
-            Audio bytes.
-        """
-        import io
-        import torch
-        import torchaudio
-
-        model, tokenizer = self._load_model()
-
-        # Load reference audio
-        logger.info(f"Processing reference audio: {len(reference_audio)} bytes")
-
-        try:
-            # Load audio from bytes
-            audio_buffer = io.BytesIO(reference_audio)
-            waveform, sample_rate = torchaudio.load(audio_buffer)
-
-            # Resample to model's expected sample rate if needed
-            if sample_rate != self.SAMPLE_RATE:
-                resampler = torchaudio.transforms.Resample(sample_rate, self.SAMPLE_RATE)
-                waveform = resampler(waveform)
-
-            # Convert to mono if stereo
-            if waveform.shape[0] > 1:
-                waveform = waveform.mean(dim=0, keepdim=True)
-
-            # Move to device
-            waveform = waveform.to(self._device)
-
-            logger.info(f"Reference audio loaded: {waveform.shape}, {self.SAMPLE_RATE}Hz")
-
-        except Exception as e:
-            logger.error(f"Failed to load reference audio: {e}")
-            raise ValueError(f"Invalid reference audio: {e}")
-
-        # Encode reference audio to get speaker embedding/codes
-        # This depends on the model's specific API for voice cloning
-        try:
-            if hasattr(tokenizer, "encode_audio"):
-                # Use tokenizer to encode reference audio
-                speaker_codes = tokenizer.encode_audio(waveform)
-            elif hasattr(model, "encode_speaker"):
-                # Use model's speaker encoder
-                with torch.no_grad():
-                    speaker_codes = model.encode_speaker(waveform)
-            else:
-                # Fallback: pass audio directly to model
-                speaker_codes = waveform
-
-        except Exception as e:
-            logger.error(f"Failed to encode reference audio: {e}")
-            raise ValueError(f"Failed to process reference audio: {e}")
-
-        # Build prompt with speaker reference
-        if instruction:
-            prompt = f"<|speaker_ref|><|instruction|>{instruction}<|text|>{text}"
-        else:
-            prompt = f"<|speaker_ref|><|text|>{text}"
-
-        logger.info(f"Synthesizing with voice clone: text={text[:50]}...")
-
-        # Tokenize input
-        inputs = tokenizer(prompt, return_tensors="pt")
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
-
-        # Generate audio codes with speaker conditioning
-        with torch.no_grad():
-            # Pass speaker codes as additional input if model supports it
-            generate_kwargs = {
-                **inputs,
-                "max_new_tokens": 4096,
-                "do_sample": True,
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "pad_token_id": tokenizer.pad_token_id,
-                "eos_token_id": tokenizer.eos_token_id,
-            }
-
-            # Add speaker conditioning if available
-            if hasattr(model, "forward") and "speaker_codes" in str(model.forward.__code__.co_varnames):
-                generate_kwargs["speaker_codes"] = speaker_codes
-
-            outputs = model.generate(**generate_kwargs)
-
-        # Decode audio from tokens
-        audio_codes = outputs[0][inputs["input_ids"].shape[1]:]
-
-        if hasattr(tokenizer, "decode_audio"):
-            audio_array = tokenizer.decode_audio(audio_codes)
-        else:
-            audio_array = self._decode_audio_codes(audio_codes, tokenizer)
-
-        if audio_array is None or len(audio_array) == 0:
-            logger.warning("Empty audio output from voice cloning")
-            audio_array = np.zeros(self.SAMPLE_RATE, dtype=np.float32)
-
-        # Ensure audio is in the right format
-        if isinstance(audio_array, torch.Tensor):
-            audio_array = audio_array.cpu().numpy()
-
-        if audio_array.ndim > 1:
-            audio_array = audio_array.flatten()
-
-        # Normalize to [-1, 1]
-        if audio_array.max() > 1.0 or audio_array.min() < -1.0:
-            max_val = max(abs(audio_array.max()), abs(audio_array.min()))
-            if max_val > 0:
-                audio_array = audio_array / max_val
-
-        # Apply speed adjustment
-        if speed != 1.0:
-            audio_array = self._apply_speed(audio_array, speed)
-
-        return self._convert_audio(audio_array, output_format)
