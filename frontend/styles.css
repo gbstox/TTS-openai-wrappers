@@ -613,20 +613,20 @@ input[type="range"]::-moz-range-thumb {
     min-width: 250px;
 }
 
-/* Loading Indicator */
-.loading-indicator {
+/* Active Requests Indicator */
+.active-requests {
     display: flex;
     align-items: center;
     gap: var(--space-md);
     padding: var(--space-md) var(--space-lg);
     background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-warning);
     border-radius: var(--radius-lg);
     color: var(--color-text-secondary);
 }
 
-.loading-indicator.hidden {
-    display: none;
+.active-requests .spinner {
+    border-top-color: var(--color-warning);
 }
 
 .spinner {

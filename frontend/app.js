@@ -38,8 +38,8 @@ const elements = {
     clearText: document.getElementById('clear-text'),
     
     generateBtn: document.getElementById('generate-btn'),
-    loading: document.getElementById('loading'),
-    loadingTime: document.getElementById('loading-time'),
+    activeRequests: document.getElementById('active-requests'),
+    activeCount: document.getElementById('active-count'),
     
     audioContainer: document.getElementById('audio-container'),
     audioPlayer: document.getElementById('audio-player'),
@@ -66,6 +66,7 @@ function init() {
     updateVoiceInfo();
     updateCharCount();
     renderHistory();
+    updateActiveRequestsUI();
     
     // Resume any pending requests on page load
     resumePendingRequests();
@@ -267,6 +268,7 @@ async function generateSpeech() {
     
     // Create pending history item immediately
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const startTime = Date.now();
     const pendingItem = {
         id: requestId,
         text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
@@ -276,7 +278,7 @@ async function generateSpeech() {
         format: format,
         speed: speed,
         instruction: ttsParams.instruction || null,
-        timestamp: Date.now(),
+        timestamp: startTime,
         status: 'pending',
         elapsedSeconds: 0,
         audioBase64: null,
@@ -285,33 +287,24 @@ async function generateSpeech() {
     
     // Add to history immediately
     state.history.unshift(pendingItem);
-    if (state.history.length > 20) {
-        state.history = state.history.slice(0, 20);
+    if (state.history.length > 30) {  // Keep more items for parallel requests
+        state.history = state.history.slice(0, 30);
     }
     saveHistory();
     renderHistory();
+    updateActiveRequestsUI();
     
-    // Update UI
-    state.isGenerating = true;
-    elements.generateBtn.disabled = true;
-    elements.loading.classList.remove('hidden');
-    elements.audioContainer.classList.add('hidden');
-    
-    // Start timer
-    state.loadingStartTime = Date.now();
-    elements.loadingTime.textContent = '0s';
-    state.loadingInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - state.loadingStartTime) / 1000);
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = elapsed % 60;
-        elements.loadingTime.textContent = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-        
-        // Update history item elapsed time
+    // Start timer for this specific request
+    const timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
         updateHistoryItemElapsed(requestId, elapsed);
     }, 1000);
     
     // Mark as processing
     updateHistoryItemStatus(requestId, 'processing');
+    
+    // Show toast that request is queued
+    showToast(`Request queued: "${text.substring(0, 30)}..."`, 'success');
     
     try {
         const runpodRequest = { input: ttsParams };
@@ -332,6 +325,7 @@ async function generateSpeech() {
         });
         
         clearTimeout(timeoutId);
+        clearInterval(timerInterval);
         
         if (!response.ok) {
             const errorText = await response.text();
@@ -375,17 +369,21 @@ async function generateSpeech() {
             'aac': 'audio/aac',
         };
         
-        state.currentAudioBlob = new Blob([bytes], { type: mimeTypes[format] || 'audio/mpeg' });
+        const blob = new Blob([bytes], { type: mimeTypes[format] || 'audio/mpeg' });
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         
+        // Update history item to ready
+        updateHistoryItemComplete(requestId, audioData, parseFloat(elapsed));
+        
+        // Update player with this audio (latest completed)
+        state.currentAudioBlob = blob;
         if (state.currentAudioUrl) {
             URL.revokeObjectURL(state.currentAudioUrl);
         }
-        
-        state.currentAudioUrl = URL.createObjectURL(state.currentAudioBlob);
+        state.currentAudioUrl = URL.createObjectURL(blob);
         elements.audioPlayer.src = state.currentAudioUrl;
         elements.audioContainer.classList.remove('hidden');
         
-        const elapsed = ((Date.now() - state.loadingStartTime) / 1000).toFixed(1);
         elements.generationInfo.innerHTML = `
             <strong>Voice:</strong> ${voiceName} | 
             <strong>Format:</strong> ${format.toUpperCase()} | 
@@ -393,22 +391,25 @@ async function generateSpeech() {
             <strong>Time:</strong> ${elapsed}s
         `;
         
-        // Update history item to ready
-        updateHistoryItemComplete(requestId, audioData, parseFloat(elapsed));
-        
-        showToast('Audio generated successfully!', 'success');
-        elements.audioPlayer.play().catch(() => {});
+        showToast(`Audio ready: "${text.substring(0, 30)}..."`, 'success');
         
     } catch (error) {
+        clearInterval(timerInterval);
         console.error('Generation error:', error);
         const errorMsg = error.name === 'AbortError' ? 'Request timed out (15 min)' : error.message;
         updateHistoryItemStatus(requestId, 'error', errorMsg);
-        showToast(`Generation failed: ${errorMsg}`, 'error');
-    } finally {
-        state.isGenerating = false;
-        elements.generateBtn.disabled = false;
-        elements.loading.classList.add('hidden');
-        clearInterval(state.loadingInterval);
+        showToast(`Failed: ${errorMsg}`, 'error');
+    }
+}
+
+// Count and display active requests
+function updateActiveRequestsUI() {
+    const count = state.history.filter(h => h.status === 'pending' || h.status === 'processing').length;
+    if (count > 0) {
+        elements.activeRequests.style.display = 'flex';
+        elements.activeCount.textContent = count;
+    } else {
+        elements.activeRequests.style.display = 'none';
     }
 }
 
@@ -419,12 +420,13 @@ function updateHistoryItemStatus(id, status, error = null) {
         if (error) item.error = error;
         saveHistory();
         renderHistory();
+        updateActiveRequestsUI();
     }
 }
 
 function updateHistoryItemElapsed(id, seconds) {
     const item = state.history.find(h => h.id === id);
-    if (item && item.status === 'processing') {
+    if (item && (item.status === 'processing' || item.status === 'pending')) {
         item.elapsedSeconds = seconds;
         // Don't save to localStorage on every tick, just update UI
         renderHistory();
@@ -440,6 +442,7 @@ function updateHistoryItemComplete(id, audioBase64, elapsedSeconds) {
         item.error = null;
         saveHistory();
         renderHistory();
+        updateActiveRequestsUI();
     }
 }
 
