@@ -42,8 +42,8 @@ RUN mkdir -p ${QWEN3TTS_MODEL_DIR}
 
 # Install PyTorch with CUDA support first
 RUN pip install --no-cache-dir \
-    torch>=2.1.0 \
-    torchaudio>=2.1.0 \
+    "torch>=2.1.0" \
+    "torchaudio>=2.1.0" \
     --index-url https://download.pytorch.org/whl/cu121
 
 # Copy and install engine requirements
