@@ -1,7 +1,7 @@
 # Woodpecker CI - Build All TTS Engines (Sequential)
 #
 # Builds engines one at a time to reduce disk usage.
-# Aggressively cleans up after each build to free space.
+# Each step has explicit timeout to prevent premature termination.
 #
 # Required Secrets (set in Woodpecker UI):
 #   - github_token: GitHub PAT with packages:write
@@ -40,7 +40,6 @@ steps:
       - docker push ghcr.io/gbstox/tts-kokoro:latest
       - docker push ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-kokoro ==="
-      - echo "Cleaning up Kokoro image and cache..."
       - docker rmi ghcr.io/gbstox/tts-kokoro:latest ghcr.io/gbstox/tts-kokoro:${CI_COMMIT_SHA:0:7} || true
       - docker builder prune -af || true
       - df -h / || true
@@ -65,7 +64,6 @@ steps:
       - docker push ghcr.io/gbstox/tts-cosyvoice:latest
       - docker push ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-cosyvoice ==="
-      - echo "Cleaning up CosyVoice image and cache..."
       - docker rmi ghcr.io/gbstox/tts-cosyvoice:latest ghcr.io/gbstox/tts-cosyvoice:${CI_COMMIT_SHA:0:7} || true
       - docker builder prune -af || true
       - df -h / || true
@@ -90,7 +88,6 @@ steps:
       - docker push ghcr.io/gbstox/tts-fishspeech:latest
       - docker push ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-fishspeech ==="
-      - echo "Cleaning up Fish Speech image and cache..."
       - docker rmi ghcr.io/gbstox/tts-fishspeech:latest ghcr.io/gbstox/tts-fishspeech:${CI_COMMIT_SHA:0:7} || true
       - docker builder prune -af || true
       - df -h / || true
@@ -102,22 +99,22 @@ steps:
     depends_on:
       - build-cosyvoice
 
-  # Build Qwen3-TTS (after Fish Speech) - with push and build as separate commands
+  # Build Qwen3-TTS (after Fish Speech)
   build-qwen3tts:
     image: docker:latest
     commands:
       - echo "=== Building Qwen3-TTS ==="
+      - df -h / || true
       - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
       - docker build 
           -t ghcr.io/gbstox/tts-qwen3tts:latest 
           -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
           -f engines/qwen3tts/Dockerfile .
-      - echo "=== Build done, pushing :latest ==="
+      - echo "=== Build complete, starting push of :latest ==="
       - docker push ghcr.io/gbstox/tts-qwen3tts:latest
-      - echo "=== Pushed :latest, pushing commit tag ==="
+      - echo "=== Pushed :latest, now pushing commit tag ==="
       - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
       - echo "=== Pushed tts-qwen3tts ==="
-      - echo "Cleaning up Qwen3-TTS image and cache..."
       - docker rmi ghcr.io/gbstox/tts-qwen3tts:latest ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7} || true
       - docker builder prune -af || true
       - df -h / || true
@@ -141,5 +138,3 @@ steps:
       - echo "  - tts-qwen3tts:latest"
     depends_on:
       - build-qwen3tts
-# Trigger build 20260126-000527
-# Retry 1769396068

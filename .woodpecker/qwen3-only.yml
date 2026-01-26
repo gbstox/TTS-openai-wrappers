@@ -1,0 +1,62 @@
+# Woodpecker CI - Qwen3-TTS Only Build
+#
+# Standalone build for just Qwen3-TTS.
+# Manual trigger to run independently of other engines.
+
+labels:
+  platform: linux/amd64
+
+when:
+  - event: manual
+
+steps:
+  cleanup:
+    image: docker:latest
+    commands:
+      - echo "=== Cleanup ==="
+      - docker system prune -af || true
+      - docker builder prune -af || true
+      - df -h /
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  build:
+    image: docker:latest
+    commands:
+      - echo "=== Building Qwen3-TTS ==="
+      - df -h /
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+      - |
+        docker build \
+          -t ghcr.io/gbstox/tts-qwen3tts:latest \
+          -t ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7} \
+          -f engines/qwen3tts/Dockerfile .
+      - echo "=== Build complete ==="
+      - df -h /
+    secrets:
+      - github_token
+      - github_username
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - cleanup
+
+  push:
+    image: docker:latest
+    commands:
+      - echo "=== Pushing Qwen3-TTS ==="
+      - echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+      - echo "Pushing :latest..."
+      - docker push ghcr.io/gbstox/tts-qwen3tts:latest
+      - echo "=== Pushed :latest ==="
+      - echo "Pushing commit tag..."
+      - docker push ghcr.io/gbstox/tts-qwen3tts:${CI_COMMIT_SHA:0:7}
+      - echo "=== Pushed commit tag ==="
+      - echo "=== Successfully pushed tts-qwen3tts ==="
+    secrets:
+      - github_token
+      - github_username
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - build
